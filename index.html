@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="UZH Map Guessr – Guess University of Zurich buildings on the map and test your campus knowledge!" />
+  <meta name="theme-color" content="#171a2e" />
+  <title>UZH Map Guessr</title>
+
+  <!-- Main styling -->
+  <link rel="stylesheet" href="styles.css" />
+
+  <!-- Leaflet Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Inline backup styles (same as before, unchanged) -->
+  <style>
+    #map, #result-map {
+      width: 100%;
+      height: 360px;
+      border-radius: 16px;
+      overflow: hidden;
+      margin: 1rem 0;
+      position: relative;
+      z-index: 1;
+    }
+    #result-map { opacity: 0; transition: opacity 0.8s ease; }
+    #result-map.ready { opacity: 1; }
+    .bump { animation: pop 0.3s ease; }
+    @keyframes pop { 0%{transform:scale(1);} 50%{transform:scale(1.15);} 100%{transform:scale(1);} }
+
+    @keyframes flamePop {
+      0% { transform: scale(0.8); opacity: 0; }
+      20% { transform: scale(1.3); opacity: 1; }
+      60% { transform: scale(1); opacity: 1; }
+      100% { transform: scale(1); opacity: 0; transform: translateY(-15px); }
+    }
+
+    .flash { animation: flashText 0.6s ease; }
+    @keyframes flashText {
+      0% { color: var(--accent-2); text-shadow: 0 0 10px var(--accent-2); }
+      50% { color: var(--warning); text-shadow: 0 0 25px var(--warning); }
+      100% { color: var(--accent-2); text-shadow: none; }
+    }
+
+    .glow { box-shadow: 0 0 20px var(--accent-2); transition: box-shadow 0.4s ease; }
+
+    .map-legend {
+      position:absolute!important;bottom:10px;left:10px;
+      background:rgba(15,18,33,0.9);color:#fff;
+      padding:10px 14px;border-radius:12px;
+      box-shadow:0 4px 12px rgba(0,0,0,0.35);
+      font-size:0.85rem;line-height:1.2;font-weight:600;z-index:2000!important;
+    }
+    .map-legend .legend-item {display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+    .map-legend .legend-item:last-child{margin-bottom:0;}
+    .map-legend .legend-color {
+      flex:none;width:14px;height:14px;min-width:14px;min-height:14px;
+      border-radius:50%;display:inline-block;aspect-ratio:1/1;
+      box-shadow:0 0 6px rgba(255,255,255,0.25);
+    }
+  </style>
+</head>
+
+<body>
+  <main class="container">
+    <header class="header">
+      <h1>UZH Map Guessr</h1>
+      <button id="btn-theme" class="btn" style="margin-left:0.5rem;">🌞 Light Mode</button>
+      <!-- 🔇 Sound toggle button -->
+      <button id="btn-sound" class="btn" style="margin-left:1rem;">🔊 Sound On</button>
+    </header>
+
+    <!-- ✅ START SCREEN -->
+    <section id="screen-start" class="screen active" aria-labelledby="start-heading">
+      <h2 id="start-heading">Ready to play?</h2>
+      <p>
+        Explore Zürich and guess where University of Zurich buildings are located.<br />
+        10 rounds — each round is <strong>timed (60 seconds)</strong>. Test your campus geography skills!
+      </p>
+
+      <!-- 🏆 Leaderboard Preview -->
+      <div id="leaderboard-start">
+        <h3> Top Players</h3>
+        <table id="leaderboard-table-start">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Name</th>
+              <th>Points</th>
+              <th>Total Distance (km)</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboard-body-start"></tbody>
+        </table>
+      </div>
+
+      <div id="games-played">Total Games Played: loading...</div>
+      <button id="btn-start" class="btn primary">Start Game</button>
+    </section>
+
+    <!-- ✅ GAME SCREEN -->
+    <section id="screen-game" class="screen" aria-labelledby="game-heading">
+      <h2 id="game-heading" class="sr-only">Game in progress</h2>
+
+      <div class="status">
+        <div id="round-indicator">Round 1/10</div>
+        <div id="score-indicator">Points: 0</div>
+      </div>
+
+      <div id="progress-container"><div id="progress-bar"></div></div>
+
+      <!-- 🔥 Combo streak indicator + bar -->
+      <div id="streak-indicator" style="margin-bottom:0.2rem; font-weight:600; color:var(--accent-2);">
+        🔥 Streak: 0
+      </div>
+      <div id="streak-bar"></div>
+
+      <!-- Timer -->
+      <div id="timer-display">Time left: 30s</div>
+
+      <figure class="photo-wrap">
+        <img id="question-image" src="" alt="Location to guess" />
+      </figure>
+
+      <h3 id="question-text"></h3>
+      <!-- 💡 Hint text -->
+      <p id="hint-text" style="display:none; color:var(--warning); font-weight:500; margin:0.3rem 0 1rem;"></p>
+
+      <div id="map"></div>
+
+      <div class="controls">
+        <button id="btn-hint" class="btn">💡 Get Hint (-5 pts)</button>
+        <button id="btn-clear-guess" class="btn" disabled>Clear Guess</button>
+        <button id="btn-confirm-guess" class="btn primary" disabled>Confirm Guess</button>
+        <button id="btn-next" class="btn" disabled>Next</button>
+      </div>
+    </section>
+
+    <!-- ✅ RESULT SCREEN -->
+    <section id="screen-result" class="screen" aria-labelledby="results-heading">
+      <h2 id="results-heading">Results</h2>
+      <p id="result-summary"></p>
+
+      <div id="result-map"></div>
+
+      <!-- Name entry -->
+      <div id="name-entry">
+        <label for="player-name" style="color:var(--muted)">Enter your name for the leaderboard:</label>
+        <div style="margin-top:0.5rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+          <input id="player-name" type="text" maxlength="20" placeholder="Your name" />
+          <button id="btn-save-score" class="btn primary">Save Score</button>
+        </div>
+      </div>
+
+      <!-- Leaderboard -->
+      <div id="leaderboard">
+        <h3>Leaderboard</h3>
+        <table id="leaderboard-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Name</th>
+              <th>Points</th>
+              <th>Total Distance (km)</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboard-body"></tbody>
+        </table>
+      </div>
+
+      <button id="btn-restart" class="btn primary">Play Again</button>
+    </section>
+  </main>
+
+  <!-- 🎧 SOUND EFFECTS -->
+  <audio id="sound-correct" src="sounds/correct.mp3" preload="auto"></audio>
+  <audio id="sound-wrong" src="sounds/wrong.mp3" preload="auto"></audio>
+  <audio id="sound-streak" src="sounds/streak.mp3" preload="auto"></audio>
+
+  <!-- ✅ Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+    import {
+      getFirestore, collection, addDoc, getDocs, query, orderBy,
+      doc, updateDoc, increment, getDoc, setDoc
+    } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCXMlSFVxzzlunW3Goh_6rMWCnbYCXanRQ",
+      authDomain: "uzh-guessr.firebaseapp.com",
+      projectId: "uzh-guessr",
+      storageBucket: "uzh-guessr.firebasestorage.app",
+      messagingSenderId: "599787012847",
+      appId: "1:599787012847:web:42efa3f57ee083546c111a"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    window.db = db;
+    window.fbCollection = collection;
+    window.fbAddDoc = addDoc;
+    window.fbGetDocs = getDocs;
+    window.fbQuery = query;
+    window.fbOrderBy = orderBy;
+    window.fbDoc = doc;
+    window.fbUpdateDoc = updateDoc;
+    window.fbIncrement = increment;
+    window.fbGetDoc = getDoc;
+    window.fbSetDoc = setDoc;
+  </script>
+
+  <!-- ✅ Main Game Logic -->
+  <script src="app.js" type="module"></script>
+</body>
+</html>
