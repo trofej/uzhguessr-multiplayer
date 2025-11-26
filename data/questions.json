@@ -1,0 +1,399 @@
+[
+  {
+    "id": 1,
+    "question": "Where is the Botanischer Garten located?",
+    "image": "images/BotanischerGarten.jpg",
+    "answer": "Botanischer Garten",
+    "lat": 47.358633,
+    "lng": 8.561136,
+    "hint": "Located near the Zürichberg and not far from the Zoo."
+  },
+  {
+    "id": 2,
+    "question": "Where is the UZH Hauptgebäude located?",
+    "image": "images/Hauptgebäude.jpg",
+    "answer": "UZH Hauptgebäude",
+    "lat": 47.374567,
+    "lng": 8.548583,
+    "hint": "Opposite the ETH Main Building, near Polybahn."
+  },
+  {
+    "id": 3,
+    "question": "Where is the UB Erziehungswissenschaften located?",
+    "image": "images/UBErziehungswissenschaften.jpg",
+    "answer": "UB Erziehungswissenschaften",
+    "lat": 47.370957,
+    "lng": 8.554132,
+    "hint": "Close to Rämistrasse and the Faculty of Arts and Social Sciences."
+  },
+  {
+    "id": 4,
+    "question": "Where is Careum located?",
+    "image": "images/Careum.jpg",
+    "answer": "Careum",
+    "lat": 47.375338,
+    "lng": 8.553478,
+    "hint": "Located next to the University Hospital (USZ) and the Nursing Science Institute."
+  },
+  {
+    "id": 5,
+    "question": "Where is UB Betriebswirtschaftslehre located?",
+    "image": "images/UBBetriebswirtschaftslehre.jpg",
+    "answer": "UB Betriebswirtschaftslehre",
+    "lat": 47.374181,
+    "lng": 8.552657,
+    "hint": "Near the main tram stop 'ETH/Universitätsspital'."
+  },
+  {
+    "id": 6,
+    "question": "Where is Forum (2031) located?",
+    "image": "images/Forum (2031).jpg",
+    "answer": "Forum (2031)",
+    "lat": 47.374263,
+    "lng": 8.551067,
+    "hint": "Located between the main building and the economics library."
+  },
+  {
+    "id": 7,
+    "question": "Where is Irchelpark located?",
+    "image": "images/Irchelpark.jpg",
+    "answer": "Irchelpark",
+    "lat": 47.398175,
+    "lng": 8.544547,
+    "hint": "A large green park next to Campus Irchel."
+  },
+  {
+    "id": 8,
+    "question": "Where is Asien-Orient Institut located?",
+    "image": "images/Asien-Orient Institut.jpg",
+    "answer": "Asien-Orient Institut",
+    "lat": 47.372564,
+    "lng": 8.551097,
+    "hint": "Near the main law building and close to Rämistrasse."
+  },
+  {
+    "id": 9,
+    "question": "Where is Rechtswissenschaftliche Bibliothek located?",
+    "image": "images/Rechtswissenschaftliche Bibliothek.jpg",
+    "answer": "Rechtswissenschaftliche Bibliothek",
+    "lat": 47.373365,
+    "lng": 8.550783,
+    "hint": "Part of the Faculty of Law, located behind the main building."
+  },
+  {
+    "id": 10,
+    "question": "Where is Zentrum für Zahnmedizin located?",
+    "image": "images/Zentrum für Zahnmedizin.jpg",
+    "answer": "Zentrum für Zahnmedizin",
+    "lat": 47.374582,
+    "lng": 8.552934,
+    "hint": "Close to Careum and the University Hospital area."
+  },
+  {
+    "id": 11,
+    "question": "Where is Alter Botanischer Garten located?",
+    "image": "images/Alter Botanischer Garten.jpg",
+    "answer": "Alter Botanischer Garten",
+    "lat": 47.371181,
+    "lng": 8.533687,
+    "hint": "Hidden oasis near Bahnhof Selnau and the city center."
+  },
+  {
+    "id": 12,
+    "question": "Where is Theologisches Seminar Kirchgasse located?",
+    "image": "images/Theologisches Seminar Kirchgasse.jpg",
+    "answer": "Theologisches Seminar Kirchgasse",
+    "lat": 47.370057,
+    "lng": 8.544519,
+    "hint": "Located in the Niederdorf old town, near Grossmünster."
+  },
+  {
+    "id": 13,
+    "question": "Where is Universitätsspital located?",
+    "image": "images/Universitätsspital.jpg",
+    "answer": "Universitätsspital",
+    "lat": 47.376623,
+    "lng": 8.549168,
+    "hint": "Next to the tram stop 'ETH/Universitätsspital'."
+  },
+  {
+    "id": 14,
+    "question": "Where is ASVZ Fluntern located?",
+    "image": "images/ASVZ Fluntern.jpg",
+    "answer": "ASVZ Fluntern",
+    "lat": 47.383008178248815,
+    "lng": 8.574164225506598,
+    "hint": "At the eastern edge of Zürichberg, near the Zoo."
+  },
+  {
+    "id": 15,
+    "question": "Where is Campus Irchel located?",
+    "image": "images/Campus Irchel.jpg",
+    "answer": "Campus Irchel",
+    "lat": 47.39748681848897,
+    "lng": 8.549235708545188,
+    "hint": "Main UZH science campus, surrounded by Irchelpark."
+  },
+  {
+    "id": 16,
+    "question": "Where is Platte 14 Mensa located?",
+    "image": "images/Platte 14 Mensa.jpg",
+    "answer": "Platte 14 Mensa",
+    "lat": 47.37421432919373,
+    "lng": 8.552611779097287,
+    "hint": "Popular student cafeteria close to the economics buildings."
+  },
+  {
+    "id": 17,
+    "question": "Where is Science Pavilion Irchel located?",
+    "image": "images/Science Pavilion Irchel.jpg",
+    "answer": "Science Pavilion Irchel",
+    "lat": 47.39783274597236,
+    "lng": 8.54730085196444,
+    "hint": "Within Campus Irchel, near the physics and biology departments."
+  },
+  {
+    "id": 18,
+    "question": "Where is Staatsarchiv des Kantons located?",
+    "image": "images/Staatsarchiv d. Kantons.jpg",
+    "answer": "Staatsarchiv des Kantons",
+    "lat": 47.39733760776164,
+    "lng": 8.546926688253619,
+    "hint": "Located near Irchelpark, in the same area as Campus Irchel."
+  },
+  {
+    "id": 19,
+    "question": "Where is UB Anglistik located?",
+    "image": "images/UB Anglizistik.jpg",
+    "answer": "UB Anglistik",
+    "lat": 47.372763814659244,
+    "lng": 8.555512335410945,
+    "hint": "Found near the Faculty of Arts on Schönberggasse."
+  },
+  {
+    "id": 20,
+    "question": "Where is UB Germanistik & Skandinavistik located?",
+    "image": "images/UB Germanistik & Skandinavistik.jpg",
+    "answer": "UB Germanistik & Skandinavistik",
+    "lat": 47.373310657179886,
+    "lng": 8.549195238150984,
+    "hint": "In the same block as the Law and Theology libraries."
+  },
+  {
+    "id": 21,
+    "question": "Where is UB Pflanzenwissenschaften located?",
+    "image": "images/UB Pflanzenwissenschaften.jpg",
+    "answer": "UB Pflanzenwissenschaften",
+    "lat": 47.35894402946192,
+    "lng": 8.559608594089182,
+    "hint": "Located at the Botanical Garden campus near Zollikerstrasse."
+  },
+  {
+    "id": 22,
+    "question": "Where is UB Psychologie located?",
+    "image": "images/UB Psychologie.jpg",
+    "answer": "UB Psychologie",
+    "lat": 47.41432083224392,
+    "lng": 8.549584000671187,
+    "hint": "Situated far north in Oerlikon, near the Faculty of Psychology."
+  },
+  {
+    "id": 23,
+    "question": "Where is Lichthof located?",
+    "image": "images/Lichthof.jpg",
+    "answer": "Lichthof",
+    "lat": 47.37453414235786,
+    "lng": 8.548569733369488,
+    "hint": "Inside the UZH Main Building — a central exhibition hall."
+  },
+  {
+    "id": 24,
+    "question": "Where is Infopoint Hauptgebäude located?",
+    "image": "images/Infopoint Hauptgebäude.jpg",
+    "answer": "Infopoint Hauptgebäude",
+    "lat": 47.37467866139877,
+    "lng": 8.548933314074098,
+    "hint": "Right inside the main entrance of the UZH Hauptgebäude."
+  },
+  {
+    "id": 25,
+    "question": "Where is Botanischer Garten located?",
+    "image": "images/botanischer garten1.jpg",
+    "answer": "Botanischer Garten",
+    "lat": 47.358200209741895,
+    "lng": 8.561457365122934,
+    "hint": "Near Zürichberg, in the botanical garden."
+  },
+  {
+    "id": 26,
+    "question": "Where is BWL Bibliothek Lernraum located?",
+    "image": "images/BWL1.jpg",
+    "answer": "BWL Bibliothek Lernraum",
+    "lat": 47.37381385610801,
+    "lng": 8.552872428677377,
+    "hint": "Next to the business administration library."
+  },
+  {
+    "id": 27,
+    "question": "Where is this garden located?",
+    "image": "images/garten.jpg",
+    "answer": "Rechberggarten",
+    "lat": 47.37321500015558,
+    "lng": 8.548288882290917,
+    "hint": "Garden located under the main building of uzh"
+  },
+  {
+    "id": 28,
+    "question": "Where is this garden located?",
+    "image": "images/garten1.jpg",
+    "answer": "Rechberggarten",
+    "lat": 47.37319854475735,
+    "lng": 8.54828078280838,
+    "hint": "Garden located under the main building of uzh"
+  },
+  {
+    "id": 29,
+    "question": "Where is Psychologisches Institut Sozialpsychologie located?",
+    "image": "images/Binzmühlestrasse.jpg",
+    "answer": "Psychologisches Institut Sozialpsychologie",
+    "lat": 47.41427655141583,
+    "lng": 8.549932869971126,
+    "hint": "Building in Oerlikon"
+  },
+  {
+    "id": 30,
+    "question": "Where is this building located?",
+    "image": "images/gebäude.jpg",
+    "answer": "UZH Main Building ",
+    "lat": 47.37547437974428,
+    "lng": 8.547965395728733,
+    "hint": "Part of the main complex"
+  },
+  {
+    "id": 31,
+    "question": "Where is guetä eggä located?",
+    "image": "images/guete eggä.jpg",
+    "answer": "Guetä Eggä",
+    "lat": 47.373650070546795,
+    "lng": 8.55332508355403,
+    "hint": "Next to the business institute"
+  },
+  {
+    "id": 32,
+    "question": "Where is this picture located?",
+    "image": "images/Irchel9.jpg",
+    "answer": "Irchel Innenhof",
+    "lat": 47.39827976001328,
+    "lng": 8.549701735225709,
+    "hint": "Inside the irchel campus"
+  },
+  {
+    "id": 33,
+    "question": "Where is this picture located?",
+    "image": "images/irchel10.jpg",
+    "answer": "Irchel Statue",
+    "lat": 47.397423019311,
+    "lng": 8.548228459904756,
+    "hint": "In the irchel campus"
+  },
+  {
+    "id": 34,
+    "question": "Where is this picture located?",
+    "image": "images/Irchelsaal.jpg",
+    "answer": "Irchel Vorlesungssaal",
+    "lat": 47.39679832284102,
+    "lng": 8.549144886637515,
+    "hint": "Inside the irchel buildings"
+  },
+  {
+    "id": 35,
+    "question": "Where is this picture located?",
+    "image": "images/Kuppel2.jpg",
+    "answer": "Kuppel Main building",
+    "lat": 47.37448268187283,
+    "lng": 8.54872844930895,
+    "hint": "Inside the main building"
+  },
+  {
+    "id": 36,
+    "question": "Where is Life Science Campus located?",
+    "image": "images/Life Science Campus Schlieren 2.jpg",
+    "answer": "Life Science Campus Schlieren",
+    "lat": 47.3991910798257,
+    "lng": 8.457948872790325,
+    "hint": "Campus located in Schlieren"
+  },
+  {
+    "id": 37,
+    "question": "Where is Naturhistorisches Museum located?",
+    "image": "images/Naturhistorisches Museum.jpg",
+    "answer": "Naturhistorisches Museum",
+    "lat": 47.37531405212346,
+    "lng": 8.548007187966792,
+    "hint": "Museum inside the main building"
+  },
+  {
+    "id": 38,
+    "question": "Where is this picture located?",
+    "image": "images/RWI3.jpg",
+    "answer": "RWI Bibliothek",
+    "lat": 47.373542675927425,
+    "lng": 8.550892753347428,
+    "hint": "Students study law at this place"
+  },
+  {
+    "id": 39,
+    "question": "Where is this picture located?",
+    "image": "images/RWI5.jpg",
+    "answer": "RWI Bibliothek",
+    "lat": 47.373542675927425,
+    "lng": 8.550892753347428,
+    "hint": "Students study law at this place"
+  },
+  {
+    "id": 40,
+    "question": "Where is this picture located?",
+    "image": "images/Baustelle Forum.jpg",
+    "answer": "Forum Baustelle",
+    "lat": 47.3740490352199,
+    "lng": 8.550858115298164,
+    "hint": "The new uzh building is being built next to the main building"
+  },
+  {
+    "id": 41,
+    "question": "Where is this picture located?",
+    "image": "images/ASVZ Gloriarank.jpg",
+    "answer": "ASVZ Gloriarank",
+    "lat": 47.37671759422509,
+    "lng": 8.553194718304642,
+    "hint": "New gym complex near usz and careum"
+  },
+  {
+    "id": 42,
+    "question": "Where is this picture located?",
+    "image": "images/Gebäude Andreasstrasse 1.jpg",
+    "answer": "Gebäude Andreasstrasse",
+    "lat": 47.4132274962814, 
+    "lng": 8.54872856966854,
+    "hint": "Building in oerlikon"
+  },
+  {
+    "id": 43,
+    "question": "Where is this picture located?",
+    "image": "images/gebäude4.jpg",
+    "answer": "Archäologisches Institut",
+    "lat": 47.37526131507343,
+    "lng": 8.548974191641047,
+    "hint": "Building next to the main building"
+  },
+  {
+    "id": 44,
+    "question": "Where is this picture located?",
+    "image": "images/RWI1.jpg",
+    "answer": "RWI Gebäude",
+    "lat": 47.37333571188728,
+    "lng": 8.550425463806771,
+    "hint": "Building next to the main building"
+  }
+
+]

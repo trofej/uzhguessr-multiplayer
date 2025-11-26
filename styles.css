@@ -1,3 +1,46 @@
+/* ============================================================
+   UNIVERSAL LEAFLET MAP STYLE  — WORKS FOR ALL (#map, #result-map, #mp-round-map)
+   ============================================================ */
+
+.map-container {
+  width: 100%;
+  height: 55vh;
+  min-height: 350px;
+  max-height: 600px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #ddd;
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 0 25px rgba(0,0,0,0.25);
+  position: relative;
+  margin-top: 0 !important;
+}
+
+#map,
+#result-map,
+#mp-round-map {
+  width: 100%;
+  height: 55vh;
+  min-height: 350px;
+  max-height: 600px;
+  border-radius: 16px;
+  overflow: hidden;
+  margin-top: 0 !important;
+}
+
+.map-container .leaflet-container,
+#map.leaflet-container,
+#result-map.leaflet-container,
+#mp-round-map.leaflet-container {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+
+/* ============================================================
+   THEME & LAYOUT
+   ============================================================ */
+
 :root {
   --bg:#0f1221;
   --card:#171a2e;
@@ -11,7 +54,6 @@
   --highlight:#ffeb3b;
 }
 
-/* Base Reset */
 * { box-sizing: border-box; }
 html, body { height: 100%; }
 
@@ -23,18 +65,33 @@ body {
   overflow-x: hidden;
 }
 
-/* Layout */
+/* Force pages to always be at top, not vertically centered */
 .container {
   max-width: 900px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 0 2rem 2rem 2rem; 
+  display: block !important;
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
 }
+
+h1, h2, h3 {
+  margin-top: 0 !important;
+}
+
+section {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
 
 /* Header */
 .header {
   display: flex;
   justify-content: center;
+  gap: 0.75rem;
   margin-bottom: 1rem;
+  align-items: center;
 }
 .header h1 {
   margin: 0;
@@ -44,23 +101,27 @@ body {
   text-shadow: 0 0 10px rgba(118, 228, 247, 0.2);
 }
 
-/* ✅ Screen Containers */
+/* ============================================================
+   SCREEN SWITCHING (CRITICAL FOR LEAFLET)
+   ============================================================ */
+
 .screen {
   display: none;
-  background: var(--card);
-  border-radius: 20px;
-  padding: 1.5rem;
-  box-shadow: 0 10px 40px rgba(0,0,0,.35);
-  animation: fadeIn 0.4s ease;
-}
-.screen.active { display: block; }
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  opacity: 0;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
 }
 
-/* ✅ Status bar */
+.screen.active {
+  display: block;
+  opacity: 1;
+}
+
+
+/* ============================================================
+   STATUS + UI ELEMENTS (unchanged styling)
+   ============================================================ */
+
 .status {
   display: flex;
   justify-content: space-between;
@@ -71,7 +132,7 @@ body {
   font-weight: 500;
 }
 
-/* ✅ Score Counter Animation */
+/* Score animations */
 #score-indicator {
   transition: transform 0.25s ease, color 0.3s ease;
 }
@@ -80,69 +141,31 @@ body {
   color: var(--accent-2);
 }
 
-/* ✅ Streak Indicator + Bar */
+/* Streak */
 #streak-indicator {
   font-weight: 600;
   color: var(--accent-2);
   margin-bottom: 0.2rem;
-  text-shadow: 0 0 8px rgba(118, 228, 247, 0.2);
-  transition: color 0.3s ease, text-shadow 0.3s ease;
 }
 #streak-indicator.flash {
   animation: flashText 0.6s ease;
 }
 
-#streak-bar {
-  height: 8px;
-  width: 0%;
-  border-radius: 6px;
-  background: linear-gradient(90deg, var(--success), var(--accent-2));
-  transition: width 0.4s ease-out, opacity 0.3s;
-  opacity: 0.3;
-  margin-bottom: 0.4rem;
-}
-#streak-bar.glow {
-  box-shadow: 0 0 20px var(--accent-2);
-}
-
 @keyframes flashText {
-  0% { color: var(--accent-2); text-shadow: 0 0 10px var(--accent-2); }
-  50% { color: var(--warning); text-shadow: 0 0 25px var(--warning); }
-  100% { color: var(--accent-2); text-shadow: none; }
+  0% { color: var(--accent-2); }
+  50% { color: var(--warning); }
+  100% { color: var(--accent-2); }
 }
 
-/* 🔥 Combo popup animation */
-@keyframes flamePop {
-  0% { transform: scale(0.8); opacity: 0; }
-  20% { transform: scale(1.3); opacity: 1; }
-  60% { transform: scale(1); opacity: 1; }
-  100% { transform: translateY(-15px) scale(1); opacity: 0; }
-}
-
-/* ✅ Timer styling */
+/* Timer */
 #timer-display {
   font-size: 1rem;
   text-align: right;
   color: var(--accent-2);
   font-weight: 600;
-  margin-bottom: 0.5rem;
-  transition: color 0.3s ease, transform 0.2s ease;
-}
-#timer-display.warning {
-  color: var(--warning);
-  transform: scale(1.05);
-}
-#timer-display.critical {
-  color: var(--danger);
-  animation: blink 1s infinite alternate;
-}
-@keyframes blink {
-  from { opacity: 1; }
-  to { opacity: 0.4; }
 }
 
-
-/* ✅ Question image */
+/* Question image */
 .photo-wrap {
   margin: 0;
   background: #0a0d1b;
@@ -157,61 +180,14 @@ body {
   object-fit: cover;
   transition: transform 0.3s ease;
 }
-.photo-wrap img:hover { transform: scale(1.02); }
 
-/* ✅ Map container */
-#map {
-  width: 100%;
-  height: clamp(220px, 26vh, 290px);
-  border-radius: 16px;
-  overflow: hidden;
-  transition: box-shadow 0.5s ease-out;
-  border: 1px solid rgba(255,255,255,0.06);
-}
-#map.flash { box-shadow: 0 0 40px 8px var(--success); }
-#map.flash-perfect { box-shadow: 0 0 60px 10px var(--success); }
-#map.flash-close { box-shadow: 0 0 40px 8px var(--accent-2); }
-#map.flash-off { box-shadow: 0 0 25px 6px var(--warning); }
-#map.flash-bad { box-shadow: 0 0 20px 4px var(--danger); }
-
-
-/* 🌍 Map reveal animation */
-.map-reveal {
-  filter: blur(8px) brightness(0.7);
-  opacity: 0;
-  transform: scale(1.02);
-  transition: filter 1s ease, opacity 1s ease, transform 1s ease;
-}
-.map-reveal.active {
-  filter: blur(0) brightness(1);
-  opacity: 1;
-  transform: scale(1);
-}
-
-/* ✅ Mini Result Map */
-#result-map {
-  width: 100%;
-  height: 360px;
-  min-height: 300px;
-  border-radius: 12px;
-  margin-top: 1rem;
-  border: 1px solid rgba(255,255,255,0.08);
-  overflow: hidden;
-  box-shadow: 0 0 25px rgba(0,0,0,0.25);
-  display: block !important;
-  opacity: 0;
-  transition: opacity 0.6s ease-in;
-}
-#result-map.ready {
-  opacity: 1;
-}
-
-/* ✅ Buttons */
+/* Buttons */
 .controls {
   display: flex;
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 0.5rem;
+  margin-top: 0.9rem;
 }
 .btn {
   padding: 0.8rem 1.1rem;
@@ -220,8 +196,8 @@ body {
   background: #0e1230;
   color: var(--text);
   cursor: pointer;
-  transition: background .2s ease, transform .05s ease, opacity 0.3s;
 }
+
 .btn:hover:not([disabled]) { transform: translateY(-1px); }
 .btn[disabled] { opacity: .6; cursor: not-allowed; }
 .btn.primary {
@@ -235,7 +211,7 @@ body {
   box-shadow: 0 0 10px rgba(118, 228, 247, 0.4);
 }
 
-/* ✅ Leaderboards */
+/* Leaderboards */
 #leaderboard table, #leaderboard th, #leaderboard td {
   border: 1px solid rgba(255,255,255,0.08);
 }
@@ -256,7 +232,7 @@ body {
   padding: 0.4rem 0.6rem;
 }
 
-/* ✅ Highlighted row */
+/* âś… Highlighted row */
 .leaderboard-self {
   background: linear-gradient(90deg, rgba(255, 240, 100, 0.25), rgba(255, 220, 60, 0.15));
   color: var(--highlight) !important;
@@ -272,7 +248,7 @@ body {
   100% { box-shadow: 0 0 5px rgba(255, 235, 60, 0.2); }
 }
 
-/* 🎨 Improved Start Screen Leaderboard Layout */
+/* đźŽ¨ Improved Start Screen Leaderboard Layout */
 #leaderboard-start {
   margin-top: 2rem;
   padding: 1rem 1.25rem 1.25rem;
@@ -291,9 +267,8 @@ body {
   align-items: center;
   gap: 0.5rem;
 }
-
 #leaderboard-start h3::before {
-  content: "🏆";
+  content: "đźŹ†";
   font-size: 1.3rem;
   margin-right: 0.2rem;
 }
@@ -307,30 +282,26 @@ body {
   box-shadow: 0 4px 20px rgba(0,0,0,0.25);
   margin-top: 0.5rem;
 }
-
 #leaderboard-start th,
 #leaderboard-start td {
   padding: 0.6rem 0.8rem;
 }
-
 #leaderboard-start th {
   background: rgba(255,255,255,0.06);
   color: var(--accent-2);
   font-weight: 600;
   text-align: left;
 }
-
 #leaderboard-start td {
   color: var(--text);
   border-top: 1px solid rgba(255,255,255,0.08);
 }
-
 #leaderboard-start tbody tr:hover {
   background: rgba(255,255,255,0.05);
   transition: background 0.25s ease;
 }
 
-/* Add spacing after leaderboard and before game counter */
+/* Games played counter */
 #games-played {
   margin-top: 1.2rem !important;
   margin-bottom: 1.5rem;
@@ -339,7 +310,7 @@ body {
   text-align: left;
 }
 
-/* Improve Start button layout */
+/* Start button */
 #btn-start {
   margin-top: 1rem;
   padding: 0.9rem 1.4rem;
@@ -347,23 +318,26 @@ body {
   border-radius: 10px;
 }
 
-/* ✅ Input styles */
-#player-name {
-  flex: 1;
+/* Input styles */
+#player-name,
+#mp-name,
+#mp-join-code {
   font-size: 1rem;
-  padding: 0.5rem;
+  padding: 0.5rem 0.6rem;
   border-radius: 8px;
   border: 1px solid rgba(255,255,255,0.1);
   background: rgba(255,255,255,0.03);
   color: var(--text);
 }
-#player-name:focus {
+#player-name:focus,
+#mp-name:focus,
+#mp-join-code:focus {
   outline: none;
   border-color: var(--accent-2);
   background: rgba(255,255,255,0.06);
 }
 
-/* ✅ Animated Correct Marker */
+/* âś… Animated Correct Marker */
 .animated-pulse-marker { position: relative; width: 30px; height: 30px; }
 .pulse-outer {
   position: absolute; top: 0; left: 0;
@@ -384,13 +358,7 @@ body {
   100% { transform: scale(0.6); opacity: 0; }
 }
 
-/* ✅ Games Played Counter Animation */
-@keyframes fadeInUp {
-  0% { opacity: 0; transform: translateY(4px); }
-  100% { opacity: 1; transform: translateY(0); }
-}
-
-/* 🖼️ Progress Bar */
+/* Progress Bar */
 #progress-container {
   width: 100%;
   background: rgba(255,255,255,0.05);
@@ -406,18 +374,7 @@ body {
   transition: width 0.5s ease;
 }
 
-/* ✨ Screen transition animations */
-.screen {
-  opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 0.5s ease, transform 0.5s ease;
-}
-.screen.active {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-/* 🧱 Light theme support */
+/* đź§± Light theme support */
 body.light {
   --bg:#f9fafb;
   --card:#ffffff;
@@ -444,8 +401,7 @@ body, .screen {
   transition: background 0.4s ease, color 0.4s ease;
 }
 
-
-/* ✅ Map Legend */
+/* Map Legend */
 .map-legend {
   background: rgba(15, 18, 33, 0.9);
   color: var(--text);
@@ -463,19 +419,9 @@ body, .screen {
   gap: 8px;
   margin-bottom: 6px;
 }
-.map-legend .legend-color {
-  flex: none;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  box-shadow: 0 0 6px rgba(255,255,255,0.25);
-  display: inline-block;
-  background-clip: padding-box;
-}
 .map-legend .legend-item:last-child { margin-bottom: 0; }
 
-
-/* 🟥 Cross marker (player's guess) */
+/* Cross marker (player guess) */
 .cross-marker .cross-shape {
   position: relative;
   width: 14px;
@@ -495,7 +441,7 @@ body, .screen {
   transform: rotate(90deg);
 }
 
-/* 🟩 Cube (square marker) for correct locations */
+/* Correct square marker */
 .square-marker .square-shape {
   width: 12px;
   height: 12px;
@@ -505,12 +451,11 @@ body, .screen {
   box-shadow: 0 0 6px rgba(96, 211, 148, 0.6);
 }
 
-/* 🔷 Legend samples */
+/* Legend samples */
 .legend-symbol.cross-sample {
   display: inline-block;
   width: 12px;
   height: 12px;
-  background: none;
   position: relative;
 }
 .legend-symbol.cross-sample::before,
@@ -526,7 +471,6 @@ body, .screen {
 .legend-symbol.cross-sample::after {
   transform: rotate(90deg);
 }
-
 .legend-symbol.square-sample {
   display: inline-block;
   width: 12px;
@@ -536,8 +480,7 @@ body, .screen {
   border: 1px solid #1b1f2a;
 }
 
-
-/* 🏷️ Hotspot hover labels */
+/* Hotspot labels */
 .leaflet-tooltip.hotspot-label {
   background: rgba(15, 18, 33, 0.9);
   color: #fff;
@@ -551,31 +494,8 @@ body, .screen {
   box-shadow: 0 2px 8px rgba(0,0,0,0.4);
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
-.leaflet-tooltip.hotspot-label.leaflet-tooltip-fade {
-  opacity: 0;
-  transform: translateY(4px);
-}
 
-
-/* 🌈 Connection highlight styles */
-.leaflet-interactive.hotspot:hover {
-  filter: drop-shadow(0 0 4px currentColor);
-  transform: scale(1.05);
-  transition: 0.2s ease;
-}
-
-.hotspot-label {
-  font-weight: 600;
-  font-size: 0.8rem;
-  color: #fff !important;
-  background: rgba(0,0,0,0.55);
-  padding: 2px 6px;
-  border-radius: 6px;
-  border: 1px solid rgba(255,255,255,0.2);
-}
-
-
-/* 🎯 Enhanced Guess Result Popups */
+/* Guess result popups */
 .leaflet-popup-content-wrapper {
   background: rgba(15, 18, 33, 0.95);
   color: var(--text);
@@ -585,80 +505,43 @@ body, .screen {
   font-size: 0.95rem;
   border: 1px solid rgba(255,255,255,0.08);
   backdrop-filter: blur(6px);
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
 }
 .leaflet-popup-content-wrapper:hover {
   transform: translateY(-2px);
   box-shadow: 0 10px 32px rgba(0,0,0,0.6);
 }
-
 .leaflet-popup-tip {
   background: rgba(15, 18, 33, 0.95);
 }
 
-/* Inner popup card styling */
 .guess-popup {
   text-align: center;
   line-height: 1.4;
   max-width: 240px;
-  color: #fff; /* ensure all text is visible */
+  color: #fff;
   font-family: "Inter", system-ui, sans-serif;
 }
-
-/* 🟡 Header (emoji + label) */
 .guess-popup .popup-header {
   font-weight: 700;
   font-size: 1rem;
   color: #fff;
   border-radius: 10px 10px 0 0;
   padding: 6px 12px;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.4);
-  letter-spacing: 0.3px;
 }
-
-/* 🟦 Body (dark background, white text) */
 .guess-popup .popup-body {
   background: var(--card);
   border-radius: 0 0 10px 10px;
   padding: 10px 12px;
   box-shadow: inset 0 0 8px rgba(255,255,255,0.04);
-  color: #fff; /* make all text white by default */
+  color: #fff;
 }
-
 .guess-popup .popup-body hr {
   border: none;
   border-top: 1px solid rgba(255,255,255,0.1);
   margin: 8px 0;
 }
 
-/* Title (building name) */
-.guess-popup .popup-body div:first-child {
-  font-weight: 600;
-  font-size: 1.05rem;
-  margin-bottom: 2px;
-}
-
-/* Distance text */
-.guess-popup .popup-body div:nth-child(2) {
-  font-size: 0.85rem;
-  opacity: 0.9;
-}
-
-/* Points line */
-.guess-popup .popup-body div:last-child {
-  font-size: 0.9rem;
-  font-weight: 600;
-  margin-top: 4px;
-}
-
-/* Muted text (if used) */
-.guess-popup .popup-body small {
-  font-size: 0.75rem;
-  color: rgba(255,255,255,0.7);
-}
-
-
-/* Light mode support */
+/* Light-mode map popups */
 body.light .leaflet-popup-content-wrapper {
   background: rgba(255,255,255,0.95);
   color: var(--text);
@@ -673,100 +556,264 @@ body.light .guess-popup .popup-body {
   box-shadow: inset 0 0 6px rgba(0,0,0,0.05);
 }
 
+/* đźŽ® MULTIPLAYER UI STYLES */
 
-/* ✅ Responsive Enhancements */
-
-/* --- Tablet and smaller laptops (≤1024px) --- */
-@media (max-width: 1024px) {
-  .container {
-    padding: 1.2rem;
-  }
-  .header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
-  }
-  .header h1 {
-    font-size: 1.6rem;
-  }
-  #map, #result-map {
-    height: 40vh;
-  }
-  .photo-wrap img {
-    height: 40vh;
-  }
-  .controls {
-    flex-wrap: wrap;
-    justify-content: center;
-  }
+/* Room list */
+#mp-room-list {
+  list-style: none;
+  padding: 0;
+  margin-top: 1rem;
+}
+#mp-room-list li {
+  padding: 0.6rem;
+  background: var(--card);
+  border-radius: 8px;
+  margin-bottom: 0.4rem;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid rgba(255,255,255,0.06);
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+#mp-room-list li:hover {
+  background: rgba(138,161,255,0.15);
+  transform: translateY(-2px);
 }
 
-/* --- Mobile Better Layout (≤768px) --- */
+/* MP round screen */
+#screen-mp-round {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+
+/* Join box */
+#mp-join-box {
+  display: flex;
+  gap: 0.8rem;
+  margin-top: 0.8rem;
+}
+
+/* Lobby */
+#screen-mp-lobby .mp-room-info {
+  text-align: center;
+  margin-bottom: 1.2rem;
+  color: var(--muted);
+}
+
+#mp-player-list {
+  margin-top: 1rem;
+  list-style: none;
+  padding: 0;
+}
+#mp-player-list li {
+  padding: 0.6rem 0.9rem;
+  margin-bottom: 0.5rem;
+  background: rgba(255,255,255,0.04);
+  border-radius: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255,255,255,0.07);
+}
+.player-color-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  margin-right: 8px;
+  box-shadow: 0 0 6px rgba(255,255,255,0.2);
+}
+.mp-player-name {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+}
+.mp-player-score {
+  opacity: 0.9;
+  font-size: 0.85rem;
+}
+
+#btn-mp-start {
+  display: block;
+  margin: 1.3rem auto 0;
+  width: 60%;
+}
+
+/* MP round standings box */
+#mp-round-standings {
+  margin-bottom: 1rem;
+}
+
+/* MP final table */
+#mp-final {
+  margin-top: 1.2rem;
+}
+#mp-final table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.4rem;
+  background: rgba(255,255,255,0.03);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+#mp-final th {
+  background: rgba(255,255,255,0.08);
+  padding: 0.6rem;
+  color: var(--accent-2);
+  font-weight: 700;
+}
+#mp-final td {
+  padding: 0.55rem 0.7rem;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  text-align: center;
+}
+
+
+/* ============================================================
+   FIX FOR CLASSIC + MULTIPLAYER LEAFLET MAPS
+   Ensures real height so maps stop loading only top-left tiles
+   ============================================================ */
+
+/* FIX: Do NOT use flex on map screens — breaks Leaflet in Edge */
+#screen-game,
+#screen-mp-round,
+#screen-mp-lobby,
+#screen-result { 
+  min-height: auto;
+}
+
+
+body.in-game #screen-mp-round,
+body.in-game #screen-game,
+body.in-game #screen-result {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+body.in-game .header {
+  justify-content: flex-end;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0.4rem 1rem;
+}
+
+body.in-game .header h1 {
+  display: none;
+}
+
+
+/* ============================================================
+   🏆 Fancy Round Standings Table
+   ============================================================ */
+
+#mp-round-standings {
+  margin: 1rem 0 1.2rem;
+  padding: 1rem 1.2rem;
+  background: rgba(255,255,255,0.04);
+  border-radius: 14px;
+  box-shadow: 0 0 18px rgba(118, 228, 247, 0.15);
+  border: 1px solid rgba(255,255,255,0.06);
+  backdrop-filter: blur(6px);
+}
+
+#mp-round-standings h3 {
+  margin-top: 0;
+  font-size: 1.25rem;
+  color: var(--accent-2);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+#mp-round-standings h3::before {
+  content: "🏆";
+  font-size: 1.3rem;
+}
+
+#mp-round-standings table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.7rem;
+  font-size: 0.95rem;
+}
+
+#mp-round-standings th {
+  padding: 0.5rem;
+  text-align: left;
+  color: var(--accent);
+  font-weight: 700;
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+}
+
+#mp-round-standings td {
+  padding: 0.55rem 0.5rem;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  color: var(--text);
+}
+
+#mp-round-standings tbody tr:nth-child(odd) {
+  background: rgba(255,255,255,0.03);
+}
+
+#mp-round-standings tbody tr:hover {
+  background: rgba(118,228,247,0.08);
+  transition: background 0.2s ease;
+}
+
+/* Medal icons for first 3 places */
+.round-medal {
+  font-size: 1.2rem;
+  margin-right: 0.35rem;
+}
+
+
+
+/* ============================================================
+   Responsive
+   ============================================================ */
+
+@media (max-width: 1024px) {
+  .container { padding: 1.2rem; }
+  .header { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+  .header h1 { font-size: 1.6rem; }
+  #map, 
+  .photo-wrap img { height: 40vh; }
+  .controls { justify-content: center; }
+}
+
 @media (max-width: 768px) {
+  body, html { font-size: 16px; }
+  .container { padding: 1.1rem; }
 
-  body, html {
-    font-size: 16px;
-  }
-
-  .container {
-    padding: 1.1rem;
-  }
-
-  /* Header */
   .header {
     flex-direction: column;
     gap: 0.8rem;
     align-items: center;
     margin-bottom: 1.2rem;
   }
-  .header h1 {
-    font-size: 1.6rem;
-  }
+  .header h1 { font-size: 1.6rem; }
 
-  /* Status bar spacing */
-  .status {
-    margin-bottom: 1.4rem;
-  }
+  .status { margin-bottom: 1.4rem; }
+  #score-indicator, #round-indicator { font-size: 1rem; }
 
-  #score-indicator,
-  #round-indicator {
-    font-size: 1rem;
-  }
-
-  /* Add breathing room */
   #question-text {
     margin: 0.8rem 0;
     font-size: 1.05rem;
     text-align: center;
   }
 
-  .photo-wrap {
-    margin-bottom: 1rem;
-  }
+  .photo-wrap { margin-bottom: 1rem; }
+  .photo-wrap img { height: auto; max-height: 36vh; border-radius: 14px; }
 
-  /* Improve image size */
-  .photo-wrap img {
-    height: auto;
-    max-height: 36vh;
-    border-radius: 14px;
-  }
 
-  /* Map bigger & spaced */
-  #map {
-    height: 35vh;
-    margin-top: 0.6rem;
-    margin-bottom: 1.2rem;
-    border-radius: 14px;
-  }
-
-  /* Timer centered + space */
   #timer-display {
     font-size: 1rem;
     text-align: center;
     margin-bottom: 0.8rem;
   }
 
-  /* Controls with spacing */
   .controls {
     flex-direction: column;
     gap: 0.7rem;
@@ -778,42 +825,18 @@ body.light .guess-popup .popup-body {
     font-size: 1rem;
   }
 
-  /* Hint text spacing */
   #hint-text {
     margin: 0.5rem 0 1rem;
     text-align: center;
   }
 
-  /* Progress bar spacing */
   #progress-container {
     margin-top: 0.5rem;
     margin-bottom: 1rem;
   }
 
-  /* Leaderboards */
-  #leaderboard-start table,
-  #leaderboard table {
-    font-size: 0.9rem;
-  }
+  
 
-  #leaderboard-start h3,
-  #leaderboard h3 {
-    text-align: center;
-    margin-bottom: 0.7rem;
-  }
-
-  #leaderboard-start td,
-  #leaderboard td {
-    padding: 0.45rem 0.4rem;
-  }
-
-  /* Result map spacing */
-  #result-map {
-    height: 40vh;
-    margin: 1.2rem 0;
-  }
-
-  /* Name entry fields */
   #name-entry {
     margin-top: 1.4rem;
     margin-bottom: 1.2rem;
@@ -824,33 +847,32 @@ body.light .guess-popup .popup-body {
     border-radius: 10px;
     font-size: 1rem;
   }
+
+  #mp-player-list li {
+    padding: 0.6rem;
+    flex-direction: column;
+    gap: 0.3rem;
+    text-align: center;
+  }
+  #btn-mp-start { width: 100%; }
+  
+  #mp-final table { font-size: 0.9rem; }
 }
 
-/* --- Small Phones (≤480px) --- */
 @media (max-width: 480px) {
-
   body, html { font-size: 15px; }
-
   .container { padding: 0.8rem; }
-
   .header h1 { font-size: 1.3rem; }
 
-  #map { height: 32vh; }
+  
+  .photo-wrap img { max-height: 32vh; }
 
-  .photo-wrap img {
-    max-height: 32vh;
-  }
-
-  /* More vertical spacing */
   #question-text {
     margin-top: 0.5rem;
     margin-bottom: 0.7rem;
   }
 
-  .btn {
-    padding: 0.65rem;
-    font-size: 0.95rem;
-  }
+  .btn { padding: 0.65rem; font-size: 0.95rem; }
 
   #score-indicator,
   #round-indicator,
@@ -865,13 +887,9 @@ body.light .guess-popup .popup-body {
     margin-bottom: 0.4rem;
   }
 
-  /* Better leaderboard spacing */
-  #leaderboard-start td, 
+  #leaderboard-start td,
   #leaderboard td {
     padding: 0.35rem 0.3rem;
   }
 
-  .controls {
-    gap: 0.6rem;
-  }
 }

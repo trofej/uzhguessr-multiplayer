@@ -1,16 +1,32 @@
 // ✅ UZH Map Guessr – Timed Mode Edition + Sound Effects
-const TOTAL_QUESTIONS = 10;
-const ROUND_TIME = 60;
+const TOTAL_QUESTIONS = 2;
+const ROUND_TIME = 15;
 
 let currentIndex = 0, points = 0, userGuess = null, guessLocked = false;
 let QUESTIONS = [], gameQuestions = [];
 let totalDistanceKm = 0, gamesPlayed = 0, streak = 0;
 let currentGameGuesses = [], scoreSaved = false;
-let lastSavedName = localStorage.getItem("lastSavedName") || null;
+let lastSavedName = null;
 
 let timerInterval = null, timeLeft = 0;
 let hintUsed = false;
 const STATS_DOC_ID = "gamesPlayed";
+
+
+// --- Multiplayer state ---
+let isMultiplayer = false;
+let isHost = false;
+let roomId = null;
+let roomCode = null;
+let playerId = "p_" + Math.random().toString(36).slice(2, 9);
+
+let roomUnsub = null;
+let playersUnsub = null;
+let guessesUnsub = null;
+
+let multiplayerPlayers = [];   // cached players in room
+let multiplayerGuesses = [];   // cached guesses for current round
+
 
 // UI
 const screenStart = document.getElementById("screen-start");
@@ -35,6 +51,7 @@ const gamesPlayedDisplay = document.getElementById("games-played");
 const timerDisplay = document.getElementById("timer-display");
 const streakBar = document.getElementById("streak-bar");
 const streakIndicator = document.getElementById("streak-indicator");
+const screenMpRound = document.getElementById("screen-mp-round");
 
 // 🆕 Hint system elements
 const btnHint = document.getElementById("btn-hint");
@@ -42,22 +59,18 @@ const hintText = document.getElementById("hint-text");
 
 // 🧱 Theme toggle
 const btnTheme = document.getElementById("btn-theme");
-let currentTheme = localStorage.getItem("theme") || "dark";
-document.body.classList.toggle("light", currentTheme === "light");
-btnTheme.textContent = currentTheme === "light" ? "🌙 Dark Mode" : "🌞 Light Mode";
-
-btnTheme.addEventListener("click", () => {
-  document.body.classList.toggle("light");
-  const newTheme = document.body.classList.contains("light") ? "light" : "dark";
-  localStorage.setItem("theme", newTheme);
-  btnTheme.textContent = newTheme === "light" ? "🌙 Dark Mode" : "🌞 Light Mode";
-});
+// Force a consistent dark theme everywhere
+let currentTheme = "dark";
+document.body.classList.remove("light");
+btnTheme.textContent = "🌞 Light Mode";
+btnTheme.style.display = "none"; // hide toggle to keep design consistent
 
 // 🆕 Sound elements
 const soundCorrect = document.getElementById("sound-correct");
 const soundWrong = document.getElementById("sound-wrong");
 const soundStreak = document.getElementById("sound-streak");
 const btnSound = document.getElementById("btn-sound");
+
 
 let soundEnabled = true;
 if (btnSound) {
@@ -92,8 +105,14 @@ const fbGetDoc = window.fbGetDoc;
 const fbSetDoc = window.fbSetDoc;
 
 // Leaflet
+let mapInitialized = false;
 let map, guessMarker, correctMarker, lineLayer;
 let previousGuesses = L.layerGroup();
+
+
+function scrollToTop() {
+  window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+}
 
 // --- Helpers ---
 function makePulseIcon(color) {
@@ -109,6 +128,884 @@ function makePulseIcon(color) {
 function clearGuessArtifacts() {
   [guessMarker, correctMarker, lineLayer].forEach(m => m && map.removeLayer(m));
   guessMarker = correctMarker = lineLayer = null;
+}
+
+async function ensureQuestionsLoaded() {
+  if (QUESTIONS.length > 0) return true;
+
+  try {
+    const res = await fetch("data/questions.json");
+    QUESTIONS = await res.json();
+    console.log("✅ QUESTIONS loaded");
+    return true;
+  } catch (err) {
+    console.error("❌ Failed to load QUESTIONS:", err);
+    return false;
+  }
+}
+
+
+
+// --- Multiplayer DOM ---
+const mpNameInput = document.getElementById("mp-name");
+const btnCreateRoom = document.getElementById("btn-create-room");
+const btnJoinRoom = document.getElementById("btn-join-room");
+const mpJoinCodeInput = document.getElementById("mp-join-code");
+const mpRoomInfo = document.getElementById("mp-room-info");
+const mpRoomCodeEl = document.getElementById("mp-room-code");
+const mpPlayerCountEl = document.getElementById("mp-player-count");
+const mpPlayerListEl = document.getElementById("mp-player-list");
+const btnMpStart = document.getElementById("btn-mp-start");
+
+const fbOnSnapshot = window.fbOnSnapshot;
+const fbWhere = window.fbWhere;
+const fbUpdateDoc = window.fbUpdateDoc;
+
+
+const btnOpenMp = document.getElementById("btn-open-mp");
+const screenMpMenu = document.getElementById("screen-mp-menu"); 
+const btnBackToStart = document.getElementById("btn-back-to-start");
+const btnJoinRoomToggle = document.getElementById("btn-join-room-toggle");
+const mpJoinBox = document.getElementById("mp-join-box");
+
+
+const mpRoomListEl = document.getElementById("mp-room-list");
+let roomsUnsub = null;
+
+
+function enterGameMode() {
+  document.body.classList.add("in-game");
+}
+
+function exitGameMode() {
+  document.body.classList.remove("in-game");
+}
+
+
+// Live browser of all open rooms
+function startRoomBrowser() {
+  if (roomsUnsub) roomsUnsub();
+
+  const roomsRef = fbCollection(db, "rooms");
+  const qRooms = fbQuery(roomsRef, fbWhere("stage", "==", "waiting"));
+
+  roomsUnsub = fbOnSnapshot(qRooms, snap => {
+    const rooms = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderRoomBrowser(rooms);
+  });
+}
+
+function renderRoomBrowser(rooms) {
+  if (!mpRoomListEl) return;
+
+  if (rooms.length === 0) {
+    mpRoomListEl.innerHTML = `
+      <li style="opacity:0.6;">No open rooms yet…</li>
+    `;
+    return;
+  }
+
+  mpRoomListEl.innerHTML = rooms.map(r => `
+    <li data-id="${r.id}" data-code="${r.code}">
+      <span>🔹 Room <strong>${r.code}</strong></span>
+      <span>${r.minPlayers || 0}/${r.maxPlayers || 10} players</span>
+    </li>
+  `).join("");
+
+  // Click handler
+  mpRoomListEl.querySelectorAll("li").forEach(li => {
+    li.addEventListener("click", () => {
+      mpJoinRoomById(li.dataset.id, li.dataset.code);
+    });
+  });
+}
+
+
+
+
+btnOpenMp.addEventListener("click", () => {
+  setScreen(document.getElementById("screen-mp-menu"));
+  startRoomBrowser();    // 🔥 start scanning rooms
+});
+
+btnBackToStart.addEventListener("click", () => {
+  setScreen(screenStart);
+});
+
+btnJoinRoomToggle.addEventListener("click", () => {
+  mpJoinBox.style.display = mpJoinBox.style.display === "none" ? "block" : "none";
+});
+
+// random 4–5 letter room code
+function generateRoomCode() {
+  const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let c = "";
+  for (let i = 0; i < 5; i++) c += letters[Math.floor(Math.random() * letters.length)];
+  return c;
+}
+
+function getPlayerName() {
+  const raw = (mpNameInput?.value || playerNameInput?.value || "").trim();
+  return (raw || "Anonymous").slice(0, 20);
+}
+
+async function createRoom() {
+  const name = getPlayerName();
+  if (!name) return alert("Please enter a name first!");
+
+  isMultiplayer = true;
+  isHost = true;
+
+  // Create the room document
+  const roomRef = await fbAddDoc(fbCollection(db, "rooms"), {
+    createdAt: Date.now(),
+    stage: "waiting",
+    hostId: playerId,
+    code: Math.floor(100000 + Math.random() * 900000).toString(), // 6-digit code
+  });
+
+  roomId = roomRef.id;
+
+  // Add host to players subcollection
+  await fbSetDoc(fbDoc(db, "rooms", roomId, "players", playerId), {
+    name,
+    color: "#" + Math.floor(Math.random() * 16777215).toString(16).padStart(6, "0"),
+    score: 0,
+    totalDistance: 0,
+    ready: true,
+    joinedAt: Date.now(),
+    lastRoundFinished: -1
+  });
+
+  // Immediately jump to lobby UI
+  setScreen(document.getElementById("screen-mp-lobby"));
+
+  // Fill lobby UI with initial information
+  document.getElementById("mp-room-code").textContent = "------";
+  document.getElementById("mp-player-list").innerHTML = `
+    <li><strong>Loading room…</strong></li>
+  `;
+
+  // Start Firebase listeners (players, room status, start events)
+  startRoomListeners();
+}
+
+
+async function joinRoom() {
+  const name = getPlayerName();
+  if (!name) return alert("Please enter a name first!");
+
+  const code = document.getElementById("mp-join-code").value.trim();
+  if (code.length < 4) return alert("Invalid room code.");
+
+  // Find the room with this code
+  const q = fbQuery(fbCollection(db, "rooms"));
+  const snap = await fbGetDocs(q);
+
+  let foundRoom = null;
+  snap.forEach(doc => {
+    if (doc.data().code == code) foundRoom = { id: doc.id, ...doc.data() };
+  });
+
+  if (!foundRoom) {
+    return alert("Room not found!");
+  }
+
+  isMultiplayer = true;
+  isHost = false;        // <--- IMPORTANT
+  roomId = foundRoom.id;
+
+  // Join room player list
+  await fbSetDoc(fbDoc(db, "rooms", roomId, "players", playerId), {
+    name,
+    color: "#" + Math.floor(Math.random() * 16777215).toString(16).padStart(6, "0"),
+    score: 0,
+    totalDistance: 0,
+    ready: true,
+    joinedAt: Date.now(),
+    lastRoundFinished: -1
+  });
+
+  // Switch UI to lobby
+  setScreen(document.getElementById("screen-mp-lobby"));
+
+  // Prepare lobby placeholders
+  document.getElementById("mp-room-code").textContent = "------";
+  document.getElementById("mp-player-list").innerHTML = `
+    <li><strong>Joining room…</strong></li>
+  `;
+
+  // Start listening for lobby updates
+  startRoomListeners();
+}
+
+
+
+
+async function mpJoinRoomById(roomIdValue, codeValue) {
+  const name = getPlayerName();
+
+  roomId = roomIdValue;
+  roomCode = codeValue;
+  isMultiplayer = true;
+
+  const roomRef = fbDoc(db, "rooms", roomId);
+  const snap = await fbGetDoc(roomRef);
+
+  if (!snap.exists()) return alert("Room no longer exists.");
+
+  const data = snap.data();
+  isHost = (data.hostId === playerId);
+
+  // add or update player
+  await fbSetDoc(fbDoc(db, "rooms", roomId, "players", playerId), {
+    name,
+    color: "#"+Math.floor(Math.random()*16777215).toString(16).padStart(6,"0"),
+    score: 0,
+    totalDistance: 0,
+    joinedAt: Date.now(),
+    ready: true,
+    lastRoundFinished: -1
+  }, { merge: true });
+
+  startRoomListeners();
+  showLobbyInfo();
+}
+
+function safeInvalidate(m) {
+  if (!m || !m.invalidateSize) return;
+
+  setTimeout(() => { m.invalidateSize(true); scrollToTop(); }, 100);
+  setTimeout(() => { m.invalidateSize(true); scrollToTop(); }, 300);
+  setTimeout(() => { m.invalidateSize(true); scrollToTop(); }, 700);
+}
+
+
+function showLobbyInfo() {
+  if (!mpRoomInfo) return;
+  mpRoomInfo.style.display = "block";
+  mpRoomCodeEl.textContent = roomCode || "";
+}
+
+function startRoomListeners() {
+  // Stop old listeners
+  if (roomUnsub) roomUnsub();
+  if (playersUnsub) playersUnsub();
+
+  // --- PLAYERS LISTENER ---
+  const playersRef = fbCollection(db, "rooms", roomId, "players");
+
+  const roomRef = fbDoc(db, "rooms", roomId);
+
+  playersUnsub = fbOnSnapshot(playersRef, snap => {
+    multiplayerPlayers = snap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    // Update lobby UI
+    renderLobbyPlayers();
+
+    // Host progression check ONLY if game is running
+    if (isHost) {
+      fbGetDoc(roomRef).then(roomSnap => {
+        if (!roomSnap.exists()) return;
+        const room = roomSnap.data();
+
+        // 🚫 Do NOT auto-advance when showing results
+        if (room.stage !== "playing") return;
+
+        maybeHostAdvanceFromPlaying(room);
+      });
+    }
+  });
+
+  // --- ROOM SNAPSHOT LISTENER ---
+  roomUnsub = fbOnSnapshot(roomRef, snap => {
+    if (!snap.exists()) return;
+    const data = snap.data();
+
+    roomCode = data.code;
+    document.getElementById("mp-room-code").textContent = roomCode;
+
+    // Host vs joiner controls
+    if (isHost) {
+      document.getElementById("btn-mp-start").style.display = "block";
+      document.getElementById("mp-wait-host").style.display = "none";
+    } else {
+      document.getElementById("btn-mp-start").style.display = "none";
+      document.getElementById("mp-wait-host").style.display = "block";
+    }
+
+    // --- GAME FLOW SWITCH ---
+    switch (data.stage) {
+      case "waiting":
+        // Stay in lobby, no auto-start
+        break;
+
+      case "playing":
+
+          console.log("▶ Entering playing stage");
+          hideLobbyUI();
+          handleRoomPlaying(data);
+          break;
+
+
+      case "showing_results":
+        console.log("📊 Showing round results");
+        handleRoomResults(data);
+        break;
+
+      case "finished":
+        console.log("🏁 Game finished");
+        handleRoomFinished(data);
+        break;
+    }
+  });
+}
+
+
+
+function fullyInvalidateMap() {
+  if (!map) return;
+  setTimeout(() => {
+    map.invalidateSize(true);
+    setTimeout(() => map.invalidateSize(true), 200);
+    setTimeout(() => map.invalidateSize(true), 500);
+  }, 100);
+}
+
+
+function renderLobbyPlayers() {
+  if (!mpPlayerListEl || !mpPlayerCountEl) return;
+  mpPlayerListEl.innerHTML = multiplayerPlayers
+    .map(p => `<li>${p.name} ${p.id === (isHost ? playerId : null) ? "(host)" : ""}</li>`)
+    .join("");
+  mpPlayerCountEl.textContent = multiplayerPlayers.length.toString();
+}
+
+
+if (btnCreateRoom) btnCreateRoom.addEventListener("click", createRoom);
+if (btnJoinRoom) btnJoinRoom.addEventListener("click", joinRoom);
+if (btnMpStart) btnMpStart.addEventListener("click", () => {
+  enterGameMode();
+  hostStartMultiplayerGame();
+});
+
+
+
+async function hostStartMultiplayerGame() {
+  if (!isHost || !roomId) return;
+
+  // 🔥 Make sure QUESTIONS are loaded
+  await ensureQuestionsLoaded();
+
+  // 🔥 Generate list of question indices
+  const questionIndices = [...Array(QUESTIONS.length).keys()]
+    .sort(() => Math.random() - 0.5)
+    .slice(0, TOTAL_QUESTIONS);
+
+  const roomRef = fbDoc(db, "rooms", roomId);
+  const now = Date.now();
+
+  await fbUpdateDoc(roomRef, {
+    stage: "playing",
+    currentIndex: 0,
+    questions: questionIndices,   // <<< 🔥 IMPORTANT
+    totalRounds: TOTAL_QUESTIONS, // <<< 🔥 IMPORTANT
+    roundStartedAt: now,
+    roundEndsAt: now + ROUND_TIME * 1000
+  });
+}
+
+function startGuessesListener(roundIndex) {
+  if (guessesUnsub) guessesUnsub();
+
+  const guessesRef = fbCollection(db, "rooms", roomId, "guesses");
+  const qg = fbQuery(guessesRef, fbWhere("round", "==", roundIndex));
+
+  guessesUnsub = fbOnSnapshot(qg, snap => {
+    multiplayerGuesses = snap.docs.map(d => d.data());
+
+    // Host checks if round should move forward
+    if (isHost) {
+      const roomRef = fbDoc(db, "rooms", roomId);
+      fbGetDoc(roomRef).then(rSnap => {
+        if (!rSnap.exists()) return;
+        const room = rSnap.data();
+        maybeHostAdvanceFromPlaying(room);
+      });
+    }
+  });
+}
+
+async function handleRoomPlaying(room) {
+  enterGameMode();
+  const roundStandingsBox = document.getElementById("mp-round-standings");
+  const finalBox = document.getElementById("mp-final");
+  if (roundStandingsBox) roundStandingsBox.style.display = "none";
+  if (finalBox) finalBox.style.display = "none";
+
+  isMultiplayer = true;
+  console.log("🔵 handleRoomPlaying triggered for round:", room.currentIndex);
+
+  // Ensure we have loaded question data
+  await ensureQuestionsLoaded();
+  if (!QUESTIONS.length) {
+    console.error("❌ Still no QUESTIONS loaded!");
+    return;
+  }
+
+  // Build gameQuestions only once
+  if (isMultiplayer && room.questions && gameQuestions.length === 0) {
+      gameQuestions = room.questions;  // store only indexes!
+  }
+  // Reset previous guess UI
+  clearGuessArtifacts();
+  previousGuesses.clearLayers();
+  guessLocked = false;
+
+  // Set current round
+  currentIndex = room.currentIndex;
+
+  // Sync timer with host
+  const now = Date.now();
+  timeLeft = Math.max(0, Math.round((room.roundEndsAt - now) / 1000));
+
+  // Switch to game screen
+  // ⭐ Ensure map exists in multiplayer
+  initGameMap();
+
+  // Switch screen
+  setScreen(screenGame);
+
+  // Render UI
+  renderRound();
+
+  // Fix tile loading
+  fullyInvalidateMap();
+
+  setTimeout(() => {
+    if (map) map.invalidateSize();
+  }, 200);
+
+    // Timeout behaviour
+    if (timeLeft <= 0) {
+      clearInterval(timerInterval);
+      timerDisplay.textContent = "⏰ Time's up!";
+
+      // This player hasn't answered yet → mark as finished with 0 pts
+      if (!guessLocked) {
+        handleTimeout();
+      }
+
+      // 🔥 Host: force a progression check as soon as time is up
+      if (isHost && roomId) {
+        const roomRef = fbDoc(db, "rooms", roomId);
+        fbGetDoc(roomRef).then(snap => {
+          if (!snap.exists()) return;
+          const latestRoom = snap.data();
+
+          // Only try to advance if we're still in this round + playing
+          if (latestRoom.stage === "playing") {
+            maybeHostAdvanceFromPlaying(latestRoom);
+          }
+        });
+      }
+    }
+
+  // 🔥 Listen for all players' guesses for this round
+  startGuessesListener(room.currentIndex);
+
+  renderRound();
+  fullyInvalidateMap();
+}
+
+
+
+async function markRoundFinishedForPlayer() {
+  console.log("📌 markRoundFinishedForPlayer() called for", playerId, "round", currentIndex);
+
+  if (!isMultiplayer || !roomId) return;
+
+  const playerRef = fbDoc(db, "rooms", roomId, "players", playerId);
+
+  await fbUpdateDoc(playerRef, {
+    lastRoundFinished: currentIndex,
+    score: points,
+    totalDistance: totalDistanceKm
+  });
+
+  console.log("✅ Saved lastRoundFinished:", currentIndex);
+}
+
+async function saveMultiplayerGuess(q, meters, pointsGained) {
+  if (!roomId) return;
+  const guessId = `r${currentIndex}_${playerId}`;
+  const km = meters / 1000;
+  const guessesRef = fbDoc(db, "rooms", roomId, "guesses", guessId);
+  await fbSetDoc(guessesRef, {
+    round: currentIndex,
+    playerId,
+    name: getPlayerName(),
+    lat: userGuess.lat,
+    lng: userGuess.lng,
+    correctLat: q.lat,
+    correctLng: q.lng,
+    distance: Math.round(meters),
+    points: pointsGained,
+    km,
+    ts: Date.now()
+  });
+}
+
+
+async function maybeHostAdvanceFromPlaying(room) {
+  if (!isHost || !roomId) return;
+
+  const now = Date.now();
+
+  // Always fetch fresh players
+  const listSnap = await fbGetDocs(
+    fbCollection(db, "rooms", roomId, "players")
+  );
+  const freshPlayers = listSnap.docs.map(d => d.data());
+
+  const everyoneDone =
+    freshPlayers.length > 0 &&
+    freshPlayers.every(p => p.lastRoundFinished >= room.currentIndex);
+
+  console.log("HOST CHECK → everyoneDone:", everyoneDone);
+
+  if (!everyoneDone && now < room.roundEndsAt) return;
+
+  // Advance!
+  const roomRef = fbDoc(db, "rooms", roomId);
+  await fbUpdateDoc(roomRef, {
+    stage: "showing_results",
+    resultsUntil: now + 5000
+  });
+
+  console.log("✅ HOST → advancing to showing_results");
+}
+
+
+function updateMultiplayerStandings() {
+  const box = document.getElementById("mp-round-standings");
+  const body = document.getElementById("mp-standings-body");
+
+  if (!box || !body) return;
+
+  // Show the standings box
+  box.style.display = "block";
+
+  // Sort players by score (high → low)
+  const sorted = [...multiplayerPlayers].sort((a, b) => b.score - a.score);
+
+  // Fill table
+  body.innerHTML = sorted
+    .map((p, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${p.name}</td>
+        <td>${p.score}</td>
+      </tr>
+    `)
+    .join("");
+}
+
+
+
+async function handleRoomResults(room) {
+
+  // Hide singleplayer-focused UI during multiplayer round results
+  const leaderboardEl = document.getElementById("leaderboard");
+  const mpFinalEl = document.getElementById("mp-final");
+  const nameEntryEl = document.getElementById("name-entry");
+  if (leaderboardEl) leaderboardEl.style.display = "none";
+  if (mpFinalEl) mpFinalEl.style.display = "none";
+  if (nameEntryEl) nameEntryEl.style.display = "none";
+
+  console.log("📊 Showing results for round", room.currentIndex);
+
+  // Ensure we are on the multiplayer round results screen
+  setScreen(screenMpRound);
+  scrollToTop();
+
+  // Small delay so the screen is visible before creating the map
+  setTimeout(() => {
+    showMultiplayerRoundMap(room.currentIndex);
+  }, 150);
+
+  updateMultiplayerStandings();        // cumulative standings side panel
+  renderMpRoundStandingsTotals();      // 🆕 total-score standings in the results screen
+
+  const SHOW_TIME = 7000;
+
+  // Host controls progression of the game
+  if (isHost) {
+    const roomRef = fbDoc(db, "rooms", roomId);
+
+    setTimeout(async () => {
+      const nextRound = room.currentIndex + 1;
+
+      if (nextRound >= room.totalRounds) {
+        // Game finished
+        await fbUpdateDoc(roomRef, { stage: "finished" });
+      } else {
+        // Advance to next round
+        const now = Date.now();
+        await fbUpdateDoc(roomRef, {
+          stage: "playing",
+          currentIndex: nextRound,
+          roundStartedAt: now,
+          roundEndsAt: now + ROUND_TIME * 1000
+        });
+      }
+    }, SHOW_TIME);
+  }
+
+  // Clean up the round results map just before the next round starts
+  setTimeout(() => {
+    destroyLeafletMap(document.getElementById("mp-round-map"));
+  }, SHOW_TIME - 100);
+}
+
+
+
+async function showMultiplayerRoundMap(roundIndex) {
+  const el = document.getElementById("mp-round-map");
+  if (!el) return;
+
+  // Switch to MP round screen first (this sets opacity/display)
+  setScreen(document.getElementById("screen-mp-round"));
+
+  // Ensure container is visible for Leaflet
+  el.style.opacity = "1";
+
+  // Clean previous Leaflet instance
+  el.innerHTML = "";
+  if (el._leaflet_id) el._leaflet_id = null;
+
+  // Load guesses
+  const guessesRef = fbCollection(db, "rooms", roomId, "guesses");
+  const q = fbQuery(guessesRef, fbWhere("round", "==", roundIndex));
+  const snap = await fbGetDocs(q);
+  const guesses = snap.docs.map(d => d.data());
+
+  if (guesses.length === 0) {
+    el.innerHTML = "<p style='text-align:center;color:var(--muted);margin-top:1rem'>No guesses this round.</p>";
+    return;
+  }
+
+  // Create map
+  const roundMap = L.map(el, {
+    center: [47.3788, 8.5481],
+    zoom: 13,
+    zoomControl: true,
+    attributionControl: false
+  });
+
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png", {
+    subdomains: "abcd",
+    maxZoom: 19,
+  }).addTo(roundMap);
+
+  const bounds = [];
+
+  guesses.forEach(g => {
+    const crossIcon = L.divIcon({
+      className: "cross-marker",
+      html: `<div class="cross-shape"></div>`,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8]
+    });
+
+    L.marker([g.lat, g.lng], { icon: crossIcon })
+      .bindTooltip(`${g.name}<br>${g.distance}m`, { direction: "top" })
+      .addTo(roundMap);
+
+    bounds.push([g.lat, g.lng]);
+
+    const squareIcon = L.divIcon({
+      className: "square-marker",
+      html: `<div class="square-shape"></div>`,
+      iconSize: [14, 14],
+      iconAnchor: [7, 7]
+    });
+
+    L.marker([g.correctLat, g.correctLng], { icon: squareIcon })
+      .bindTooltip(`Correct`, { direction: "top" })
+      .addTo(roundMap);
+
+    bounds.push([g.correctLat, g.correctLng]);
+
+    L.polyline(
+      [[g.lat, g.lng], [g.correctLat, g.correctLng]],
+      { color: "#76e4f7", weight: 2, opacity: 0.8 }
+    ).addTo(roundMap);
+  });
+
+  if (bounds.length) roundMap.fitBounds(bounds, { padding: [30, 30] });
+
+  // ⭐ CRITICAL FIX ⭐
+  // Wait until the screen is fully rendered AND opacity transition is complete
+  setTimeout(() => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        roundMap.invalidateSize(true);
+      });
+    });
+  }, 400);
+
+  el.classList.add("ready");
+}
+
+
+function showFinalMultiplayerMap() {
+  const mapContainer = document.getElementById("result-map");
+  if (!mapContainer) return;
+
+  // Reset
+  mapContainer.innerHTML = "";
+  const mapFinal = L.map(mapContainer).setView([47.3769, 8.5417], 13);
+
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19
+  }).addTo(mapFinal);
+
+  const bounds = [];
+
+  // Group markers
+  const guessLayer = L.layerGroup().addTo(mapFinal);
+  const correctLayer = L.layerGroup().addTo(mapFinal);
+
+  // Helper icon makers
+  const playerColorMap = {};
+  multiplayerPlayers.forEach(p => {
+    playerColorMap[p.id] = p.color || "#8aa1ff";
+  });
+
+  const makeCrossIconFinal = color =>
+    L.divIcon({
+      className: "cross-marker",
+      html: `<div class="cross-shape" style="background:${color}"></div>`,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8]
+    });
+
+  const makeCorrectSquareIcon = () =>
+    L.divIcon({
+      className: "square-marker",
+      html: `<div class="square-shape"></div>`,
+      iconSize: [14, 14],
+      iconAnchor: [7, 7]
+    });
+
+  // Add all guesses
+  multiplayerGuesses.forEach(g => {
+    if (g.lat != null && g.lng != null) {
+      const guessMarker = L.marker([g.lat, g.lng], {
+        icon: makeCrossIconFinal(playerColorMap[g.playerId])
+      })
+        .bindPopup(`<strong>${g.name}</strong><br>Guess<br>${g.distance} m`)
+        .addTo(guessLayer);
+
+      bounds.push([g.lat, g.lng]);
+    }
+
+    // Correct point
+    const correctMarker = L.marker([g.correctLat, g.correctLng], {
+      icon: makeCorrectSquareIcon()
+    })
+      .bindPopup(`<strong>${g.name}</strong><br>Correct answer`)
+      .addTo(correctLayer);
+
+    bounds.push([g.correctLat, g.correctLng]);
+  });
+
+  if (bounds.length > 0) {
+    mapFinal.fitBounds(bounds, { padding: [40, 40] });
+  }
+}
+
+
+
+function renderRoundStandings() {
+  const box = document.getElementById("mp-round-standings");
+  const body = document.getElementById("mp-standings-body");
+
+  if (!box || !body) return;
+
+  // Sort based on current scores
+  const sorted = [...multiplayerPlayers].sort((a,b) => b.score - a.score);
+
+  body.innerHTML = sorted.map((p, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td>${escapeHtml(p.name)}</td>
+      <td>${p.score}</td>
+    </tr>
+  `).join("");
+
+  box.style.display = "block";
+}
+
+
+
+function handleRoomFinished(room) {
+  console.log("🏁 Game finished → showing final results");
+
+  // Switch to the final multiplayer results screen
+  const finalScreen = document.getElementById("screen-result");
+  setScreen(finalScreen);
+
+  scrollToTop();
+
+  // UI cleanup
+  const leaderboardEl = document.getElementById("leaderboard");
+  const nameEntryEl = document.getElementById("name-entry");
+  const roundStandings = document.getElementById("mp-round-standings");
+  const roundMap = document.getElementById("mp-round-map");
+
+  if (leaderboardEl) leaderboardEl.style.display = "none";
+  if (nameEntryEl) nameEntryEl.style.display = "none";
+  if (roundStandings) roundStandings.style.display = "none";
+  if (roundMap) roundMap.innerHTML = "";
+
+  // Show final block
+  const finalBox = document.getElementById("mp-final");
+  const finalBody = document.getElementById("mp-final-body");
+  if (finalBox) finalBox.style.display = "block";
+
+  // Sort by total score
+  const sorted = [...multiplayerPlayers].sort((a, b) => b.score - a.score);
+  const winner = sorted[0];
+
+  // Winner banner
+  const resultSummary = document.getElementById("result-summary");
+  if (resultSummary) {
+    resultSummary.style.display = "block";
+    resultSummary.textContent = `🏆 Winner: ${winner.name} — ${winner.score} points`;
+  }
+
+  // Fill final table
+  finalBody.innerHTML = sorted
+    .map((p, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${escapeHtml(p.name)}</td>
+        <td>${p.score}</td>
+        <td>${(p.totalDistance || 0).toFixed(2)} km</td>
+      </tr>
+    `)
+    .join("");
+
+  console.log("✅ Final standings rendered");
+
+  // 🆕 Show the full replay map
+  showFinalMultiplayerMap();
+
 }
 
 // --- Game Counter ---
@@ -129,27 +1026,42 @@ async function incrementGamePlays() {
   } catch {}
 }
 
-// --- Map Init ---
-document.addEventListener("DOMContentLoaded", () => {
+
+function initGameMap() {
+  if (mapInitialized && map) {
+    return; // already created
+  }
+  mapInitialized = true;
+
   map = L.map("map", {
     center: [47.3788, 8.5481],
     zoom: 13,
-    minZoom: 12, maxZoom: 19,
-    maxBounds: L.latLngBounds([47.43, 8.45], [47.31, 8.65]),
-    maxBoundsViscosity: 1.0,
+    zoomControl: true,
+    attributionControl: false
   });
 
   L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png", {
-    subdomains: "abcd", maxZoom: 19,
+    subdomains: "abcd",
+    maxZoom: 19,
   }).addTo(map);
 
   previousGuesses.addTo(map);
-  map.on("click", e => { if (!guessLocked) placeGuess(e.latlng.lat, e.latlng.lng); });
 
+  map.on("click", e => {
+    if (!guessLocked) placeGuess(e.latlng.lat, e.latlng.lng);
+  });
+
+  setTimeout(() => map.invalidateSize(true), 200);
+}
+
+
+// 🔥 Only load scores + leaderboard at startup
+document.addEventListener("DOMContentLoaded", () => {
   loadGameCounter();
   renderLeaderboard();
   renderStartLeaderboard();
 });
+
 
 // --- Timer ---
 function startTimer() {
@@ -180,40 +1092,146 @@ function stopTimer() {
 }
 
 // --- Handle Timeout ---
-function handleTimeout() {
+async function handleTimeout() {
   guessLocked = true;
   stopTimer();
 
-  const q = gameQuestions[currentIndex];
-  const correct = [q.lat, q.lng];
+  const q = isMultiplayer
+    ? QUESTIONS[ gameQuestions[currentIndex] ]
+    : gameQuestions[currentIndex];
 
   clearGuessArtifacts();
+  const correct = [q.lat, q.lng];
   correctMarker = L.marker(correct, { icon: makePulseIcon("#ff6b6b") }).addTo(previousGuesses);
-  correctMarker.bindPopup(`<strong>⏰ Time's up!</strong><br>${q.answer}<br>+0 points`).openPopup();
+  correctMarker
+    .bindPopup(`<strong>⏰ Time's up!</strong><br>${q.answer}<br>+0 points`)
+    .openPopup();
 
+  // Store local round info (single-player history)
   currentGameGuesses.push({
     question: q.answer,
-    lat: null, lng: null,
-    correctLat: q.lat, correctLng: q.lng,
+    lat: null,
+    lng: null,
+    correctLat: q.lat,
+    correctLng: q.lng,
     distance: null
   });
 
   streak = 0;
   updateStreakUI(0);
 
-  playSound("wrong"); // 🆕 play timeout "wrong" sound
+  playSound("wrong");
 
   btnConfirmGuess.disabled = true;
   btnClearGuess.disabled = true;
-  btnNext.disabled = false;
+
+  if (!isMultiplayer) {
+    // 🟦 Single-player → show local round results
+    setTimeout(() => {
+      showSingleplayerRoundResults();
+    }, 500);
+  } else {
+    // 🟪 MULTIPLAYER → mark this player as finished and let host advance
+
+    // 1) Mark this player as done for this round (0 points)
+    await markRoundFinishedForPlayer();
+
+    // 2) If we're the host, force a progression check immediately
+    if (isHost && roomId) {
+      const roomRef = fbDoc(db, "rooms", roomId);
+      const snap = await fbGetDoc(roomRef);
+      if (snap.exists()) {
+        const latestRoom = snap.data();
+        if (latestRoom.stage === "playing") {
+          await maybeHostAdvanceFromPlaying(latestRoom);
+        }
+      }
+    }
+  }
 }
+
 
 // --- UI Switch ---
 function setScreen(s) {
-  [screenStart, screenGame, screenResult].forEach(el => el.classList.remove("active"));
+
+  // 🔥 NEW: Always force scroll to top when switching screens
+  window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  setTimeout(() => window.scrollTo(0, 0), 30);
+  setTimeout(() => window.scrollTo(0, 0), 150);
+
+  // Hide ALL screens
+  [
+    screenStart,
+    screenGame,
+    screenResult,
+    screenMpMenu,
+    document.getElementById("screen-mp-lobby"),
+    screenMpRound
+  ].forEach(el => el && el.classList.remove("active"));
+
+  // Show the requested one
   s.classList.add("active");
-  if (s === screenGame && map) setTimeout(() => map.invalidateSize(), 200);
+
+  // 🔥 Leaflet resize fix (needed after scroll)
+  if (s === screenGame || s === screenMpRound || s === screenResult) {
+      setTimeout(() => {
+          if (map) map.invalidateSize(true);
+          setTimeout(() => map?.invalidateSize(true), 150);
+          setTimeout(() => map?.invalidateSize(true), 350);
+      }, 50);
+  }
 }
+
+
+function hideLobbyUI() {
+  const lobby = document.getElementById("screen-mp-lobby");
+  if (lobby) lobby.classList.remove("active");
+
+  const mpMenu = document.getElementById("screen-mp-menu");
+  if (mpMenu) mpMenu.classList.remove("active");
+
+  const startScreen = document.getElementById("screen-start");
+  if (startScreen) startScreen.classList.remove("active");
+
+  const resultScreen = document.getElementById("screen-result");
+  if (resultScreen) resultScreen.classList.remove("active");
+
+  // Also hide the open rooms list
+  const browser = document.getElementById("mp-room-list");
+  if (browser) browser.style.display = "none";
+}
+
+
+function renderMpRoundStandingsTotals() {
+  const box = document.getElementById("mp-round-standings");
+  const body = document.getElementById("mp-round-standings-body");
+  if (!box || !body) return;
+
+  // Sort players by total points
+  const sorted = [...multiplayerPlayers]
+    .sort((a, b) => b.score - a.score);
+
+  body.innerHTML = sorted.map((p, i) => {
+    const medal =
+      i === 0 ? "🥇" :
+      i === 1 ? "🥈" :
+      i === 2 ? "🥉" : "";
+
+    return `
+      <tr>
+        <td>${medal ? `<span class="round-medal">${medal}</span>` : i + 1}</td>
+        <td>${escapeHtml(p.name)}</td>
+        <td><strong>${p.score}</strong></td>
+        <td>${(p.totalDistance || 0).toFixed(2)} km</td>
+      </tr>
+    `;
+  }).join("");
+
+  box.style.display = "block";
+}
+
+
+
 
 // --- Start Game ---
 async function startGame() {
@@ -221,24 +1239,53 @@ async function startGame() {
     const res = await fetch("data/questions.json");
     QUESTIONS = await res.json();
   }
+
   incrementGamePlays();
+
+  // 🔥 Make sure map is created BEFORE touching it
+  initGameMap();
+
+  if (map?.closePopup) map.closePopup();
   clearGuessArtifacts();
   previousGuesses.clearLayers();
-  map.closePopup();
 
-  gameQuestions = [...QUESTIONS].sort(() => Math.random() - 0.5).slice(0, TOTAL_QUESTIONS);
-  currentIndex = 0; points = 0; totalDistanceKm = 0; streak = 0;
-  currentGameGuesses = []; scoreSaved = false;
-  playerNameInput.disabled = false; btnSaveScore.disabled = false;
+  if (!isMultiplayer) {
+      gameQuestions = [...QUESTIONS]
+          .sort(() => Math.random() - 0.5)
+          .slice(0, TOTAL_QUESTIONS);
+  }
+  currentIndex = 0;
+  points = 0;
+  totalDistanceKm = 0;
+  streak = 0;
+  currentGameGuesses = [];
+  scoreSaved = false;
+
+  playerNameInput.disabled = false;
+  btnSaveScore.disabled = false;
 
   updateStreakUI(0);
+
+  // 🔥 Map is guaranteed to exist now
   map.setView([47.3788, 8.5481], 13);
+
+  // Screen switch BEFORE rendering
   setScreen(screenGame);
+
+  // 🔥 AFTER the map is visible, invalidate size
+  setTimeout(() => map?.invalidateSize(true), 250);
+  setTimeout(() => map?.invalidateSize(true), 600);
+
   renderRound();
 }
 
+
 // --- Round ---
 function renderRound() {
+  scrollToTop();   // 🔥 Always reset scroll
+  // Remove previous round maps (SP + MP) safely
+  destroyLeafletMap(document.getElementById("result-map"));
+  destroyLeafletMap(document.getElementById("mp-round-map"));
   clearGuessArtifacts();
   guessLocked = false;
   userGuess = null;
@@ -247,7 +1294,15 @@ function renderRound() {
   if (hintText) hintText.style.display = "none";
   if (btnHint) btnHint.disabled = false;
 
-  const q = gameQuestions[currentIndex];
+  let q;
+
+  if (isMultiplayer) {
+      // room.questions already contains indices set by host
+      const idx = gameQuestions[currentIndex];
+      q = QUESTIONS[idx];  // get question from global QUESTIONS list
+  } else {
+      q = gameQuestions[currentIndex];
+  }
   questionText.textContent = `Where is: ${q.answer}?`;
   roundIndicator.textContent = `Round ${currentIndex + 1}/${gameQuestions.length}`;
   // 🖼️ Update progress bar
@@ -267,6 +1322,8 @@ function renderRound() {
     mapEl.classList.remove("map-reveal", "active");
   }, 1100);
 
+  safeInvalidate(map);
+
   startTimer();
 }
 
@@ -281,7 +1338,10 @@ if (btnHint) {
     if (points >= 5) points -= 5;
     else if (timeLeft > 5) timeLeft -= 5;
 
-    const q = gameQuestions[currentIndex];
+    const q = isMultiplayer
+        ? QUESTIONS[ gameQuestions[currentIndex] ]
+        : gameQuestions[currentIndex];
+
     const hintMessage = q.hint || "No hint available for this location.";
 
     // Display the hint from JSON
@@ -310,8 +1370,13 @@ function confirmGuess() {
   guessLocked = true;
   stopTimer();
 
-  const q = gameQuestions[currentIndex];
+  // Load current question
+  const q = isMultiplayer
+    ? QUESTIONS[ gameQuestions[currentIndex] ]
+    : gameQuestions[currentIndex];
   const correct = [q.lat, q.lng];
+
+  // Distance & scoring
   const meters = map.distance([userGuess.lat, userGuess.lng], correct);
   const gained = scoreFromDistance(meters);
   const km = meters / 1000;
@@ -324,6 +1389,7 @@ function confirmGuess() {
 
   const streakBonus = Math.min(streak * 5, 25);
   const totalGained = gained + streakBonus;
+
   points += totalGained;
   totalDistanceKm += km;
 
@@ -331,39 +1397,66 @@ function confirmGuess() {
   scoreIndicator.classList.add("bump");
   setTimeout(() => scoreIndicator.classList.remove("bump"), 300);
 
+  // Marker + polyline styling
   const { label, color } = accuracyRating(meters);
-  lineLayer = L.polyline([[userGuess.lat, userGuess.lng], correct], { color, weight: 3, opacity: 0.8 }).addTo(map);
-  correctMarker = L.marker(correct, { icon: makePulseIcon(color) }).addTo(previousGuesses);
-  if (guessMarker) map.removeLayer(guessMarker);
-  correctMarker.bindPopup(`
-  <div class="guess-popup">
-    <div class="popup-header" style="background:${color};">
-      ${label}
-    </div>
-    <div class="popup-body">
-      <div style="font-weight:600;font-size:1.05rem;">${q.answer}</div>
-      <div style="font-size:0.85rem;opacity:0.85;margin-top:2px;">
-        ${km.toFixed(2)} km away
-      </div>
-      <hr>
-      <div style="font-size:0.85rem;">
-        <span style="color:${color};font-weight:600;">+${totalGained || gained} pts</span>
-      </div>
-    </div>
-  </div>
-`).openPopup();
 
-  // 🆕 Play sound feedback
+  lineLayer = L.polyline(
+    [[userGuess.lat, userGuess.lng], correct],
+    { color, weight: 3, opacity: 0.8 }
+  ).addTo(map);
+
+  correctMarker = L.marker(correct, { icon: makePulseIcon(color) })
+    .addTo(previousGuesses);
+
+  if (guessMarker) map.removeLayer(guessMarker);
+
+  // Popup UI
+  correctMarker.bindPopup(`
+    <div class="guess-popup">
+      <div class="popup-header" style="background:${color};">
+        ${label}
+      </div>
+      <div class="popup-body">
+        <div style="font-weight:600;font-size:1.05rem;">${q.answer}</div>
+        <div style="font-size:0.85rem;opacity:0.85;margin-top:2px;">
+          ${km.toFixed(2)} km away
+        </div>
+        <hr>
+        <div style="font-size:0.85rem;">
+          <span style="color:${color};font-weight:600;">+${totalGained} pts</span>
+        </div>
+      </div>
+    </div>
+  `).openPopup();
+
+  // Sound feedback
   if (gained >= 40) playSound("correct");
   else playSound("wrong");
 
-  currentGameGuesses.push({
-    question: q.answer, lat: userGuess.lat, lng: userGuess.lng,
-    correctLat: q.lat, correctLng: q.lng, distance: Math.round(meters)
-  });
+  // -----------------------------
+  // SAVE THE GUESS
+  // -----------------------------
+  if (isMultiplayer) {
+    // Save guess to Firebase
+    saveMultiplayerGuess(q, meters, totalGained);
+    markRoundFinishedForPlayer();
+  } else {
+    // Store locally for single-player results screen
+    currentGameGuesses.push({
+      question: q.answer,
+      lat: userGuess.lat,
+      lng: userGuess.lng,
+      correctLat: q.lat,
+      correctLng: q.lng,
+      distance: Math.round(meters)
+    });
+  }
+
+  // Enable next round (single-player only; MP is host-controlled)
   btnNext.disabled = false;
   btnConfirmGuess.disabled = true;
 }
+
 
 // --- 🔥 Streak / Combo Visuals ---
 function updateStreakUI(newStreak, oldStreak = 0) {
@@ -405,12 +1498,121 @@ function showComboBadge(value) {
 }
 
 
+function destroyLeafletMap(el) {
+  if (!el) return;
+
+  const map = el._leaflet_map;
+  if (map && map.remove) {
+    try {
+      map.off();
+      map.remove();
+    } catch (e) {
+      console.warn("Leaflet cleanup warning:", e);
+    }
+  }
+
+  el._leaflet_map = null;
+  el._leaflet_id = null;
+  el.innerHTML = "";
+}
+
+
+
+function showSingleplayerRoundResults() {
+  const el = document.getElementById("result-map");
+  if (!el) return;
+
+  // Switch to results screen
+  setScreen(screenResult);
+  scrollToTop();
+  nameEntry.style.display = "none";
+  resultSummary.textContent = `Round ${currentIndex + 1} results`;
+
+  // --- CLEAN OLD MAP SAFELY ---
+  destroyLeafletMap(el);
+
+  const g = currentGameGuesses[currentGameGuesses.length - 1];
+  if (!g) return;
+
+  // --- CREATE A NEW RESULT MAP ---
+  const resultMap = L.map(el, {
+    center: [47.3788, 8.5481],
+    zoom: 13,
+    zoomControl: true,
+    attributionControl: false,
+  });
+
+  // Save reference so destroyLeafletMap() can find it later
+  el._leaflet_map = resultMap;
+
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png", {
+    subdomains: "abcd",
+    maxZoom: 19,
+  }).addTo(resultMap);
+
+  const bounds = [];
+
+  // ❌ Player's guess (cross)
+  if (g.lat && g.lng) {
+    const crossIcon = L.divIcon({
+      className: "cross-marker",
+      html: `<div class="cross-shape"></div>`,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8],
+    });
+
+    L.marker([g.lat, g.lng], { icon: crossIcon })
+      .bindTooltip(`❌ Your guess<br>${g.distance} m`, { direction: "top" })
+      .addTo(resultMap);
+
+    bounds.push([g.lat, g.lng]);
+  }
+
+  // 🟩 Correct location (square)
+  const squareIcon = L.divIcon({
+    className: "square-marker",
+    html: `<div class="square-shape"></div>`,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+  });
+
+  L.marker([g.correctLat, g.correctLng], { icon: squareIcon })
+    .addTo(resultMap);
+
+  bounds.push([g.correctLat, g.correctLng]);
+
+  if (bounds.length) {
+    resultMap.fitBounds(bounds, { padding: [30, 30] });
+  }
+
+  safeInvalidate(resultMap);
+
+  // --- SHOW RESULTS FOR 7 SECONDS ---
+  setTimeout(() => {
+    // SAFELY DESTROY MAP TO PREVENT LEAFLET ERRORS
+    destroyLeafletMap(document.getElementById("result-map"));
+
+    // Continue to next round or finish
+    if (currentIndex < gameQuestions.length - 1) {
+      currentIndex++;
+      setScreen(screenGame);
+      renderRound();
+    } else {
+      finish();
+    }
+
+  }, 10000);
+}
+
+
+
 // --- Finish ---
 async function finish() {
   document.getElementById("progress-bar").style.width = "100%";
   stopTimer();
   resultSummary.textContent = `You scored ${points} points 🎯 Total distance: ${totalDistanceKm.toFixed(2)} km`;
   setScreen(screenResult);
+  scrollToTop();
   nameEntry.style.display = "block";
 
   setTimeout(async () => {
@@ -418,10 +1620,7 @@ async function finish() {
     if (!el) return;
 
     // Reset old map
-    if (el._leaflet_id) {
-      el._leaflet_id = null;
-      el.innerHTML = "";
-    }
+    destroyLeafletMap(el);
     el.style.display = "block";
 
     if (!currentGameGuesses.length) {
@@ -447,9 +1646,9 @@ async function finish() {
     });
 
     L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png", {
-      subdomains: "abcd",
-      maxZoom: 19,
+      subdomains: "abcd", maxZoom: 19,
     }).addTo(resultMap);
+
 
     const bounds = [];
 
@@ -556,7 +1755,7 @@ async function finish() {
         const avgLng = points.reduce((sum, p) => sum + p[1], 0) / points.length;
 
         // --- Draw connecting line ---
-        const line = L.polyline([[avgLat, avgLng], [q.lat, q.lng]], {
+        L.polyline([[avgLat, avgLng], [q.lat, q.lng]], {
           color: color,
           weight: 2,
           opacity: 0.3,
@@ -594,7 +1793,6 @@ async function finish() {
   }, 400);
 }
 
-
 // --- Utilities ---
 function scoreFromDistance(m) {
   if (m <= 100) return 100;
@@ -625,7 +1823,7 @@ async function loadLeaderboard() {
 
 async function renderLeaderboard() {
   const data = await loadLeaderboard();
-  const highlightName = lastSavedName || localStorage.getItem("lastSavedName") || playerNameInput.value.trim();
+  const highlightName = lastSavedName || playerNameInput.value.trim();
   leaderboardBody.innerHTML = data.map((e, i) => {
     const name = e.name || "";
     const isSelf = highlightName && name.toLowerCase().trim() === highlightName.toLowerCase().trim();
@@ -647,6 +1845,54 @@ async function renderStartLeaderboard() {
     </tr>`).join("");
 }
 
+
+function computeRoundStandings(guesses) {
+  // guesses = documents from /guesses where round == currentIndex
+
+  return guesses
+    .map(g => ({
+      playerId: g.playerId,
+      name: g.name,
+      points: g.points || 0,
+      distance: g.distance || 0
+    }))
+    .sort((a, b) => b.points - a.points);
+}
+
+function renderMpRoundStandings(roundIndex) {
+  const box = document.getElementById("mp-round-standings");
+  const body = document.getElementById("mp-round-standings-body");
+  if (!box || !body) return;
+
+  // Load guesses for this round
+  const guesses = multiplayerGuesses.filter(g => g.round === roundIndex);
+  if (!guesses.length) {
+    box.style.display = "none";
+    return;
+  }
+
+  const standings = computeRoundStandings(guesses);
+
+  body.innerHTML = standings.map((g, i) => {
+    const medal =
+      i === 0 ? "🥇" :
+      i === 1 ? "🥈" :
+      i === 2 ? "🥉" : "";
+
+    return `
+      <tr>
+        <td>${medal ? `<span class="round-medal">${medal}</span>` : i + 1}</td>
+        <td>${g.name}</td>
+        <td><strong>${g.points}</strong></td>
+        <td>${g.distance}m</td>
+      </tr>
+    `;
+  }).join("");
+
+  box.style.display = "block";
+}
+
+
 // --- Events ---
 btnConfirmGuess.addEventListener("click", confirmGuess);
 btnClearGuess.addEventListener("click", () => {
@@ -658,12 +1904,31 @@ btnClearGuess.addEventListener("click", () => {
   }
 });
 btnNext.addEventListener("click", () => {
-  currentIndex < gameQuestions.length - 1 ? renderRound(++currentIndex) : finish();
-  const progress = ((currentIndex) / gameQuestions.length) * 100;
+  // 🚫 Multiplayer: NEXT BUTTON DOES NOTHING
+  if (isMultiplayer) {
+    console.log("⛔ Next button disabled in multiplayer — host controls progression.");
+    return;
+  }
+
+  // ✅ Single-player normal flow
+  if (currentIndex < gameQuestions.length - 1) {
+    currentIndex++;
+    renderRound(currentIndex);
+  } else {
+    finish();
+  }
+
+  const progress = (currentIndex / gameQuestions.length) * 100;
   document.getElementById("progress-bar").style.width = `${progress}%`;
 });
-btnStart.addEventListener("click", startGame);
-btnRestart.addEventListener("click", () => setScreen(screenStart));
+btnStart.addEventListener("click", () => {
+  enterGameMode();
+  startGame();
+});
+btnRestart.addEventListener("click", () => {
+  exitGameMode();
+  setScreen(screenStart);
+});
 
 // --- Save Score ---
 btnSaveScore.addEventListener("click", async () => {
@@ -683,7 +1948,6 @@ btnSaveScore.addEventListener("click", async () => {
 
     scoreSaved = true;
     lastSavedName = name;
-    localStorage.setItem("lastSavedName", name);
     playerNameInput.disabled = true;
     btnSaveScore.disabled = true;
     await renderLeaderboard();
