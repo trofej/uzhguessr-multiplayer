@@ -655,8 +655,13 @@ async function saveMultiplayerGuess(q, meters, pointsGained) {
     distance: Math.round(meters),
     points: pointsGained,
     km,
-    ts: Date.now()
+    ts: Date.now(),
+
+    // 🔥 NEW FIELDS
+    questionId: q.id,
+    question: q.answer       // optional but useful
   });
+
 }
 
 
@@ -772,18 +777,14 @@ async function handleRoomResults(room) {
 }
 
 
-
 async function showMultiplayerRoundMap(roundIndex) {
   const el = document.getElementById("mp-round-map");
   if (!el) return;
 
-  // Switch to MP round screen first (this sets opacity/display)
+  // Switch screen first
   setScreen(document.getElementById("screen-mp-round"));
 
-  // Ensure container is visible for Leaflet
-  el.style.opacity = "1";
-
-  // Clean previous Leaflet instance
+  // Clear old map
   el.innerHTML = "";
   if (el._leaflet_id) el._leaflet_id = null;
 
@@ -798,136 +799,194 @@ async function showMultiplayerRoundMap(roundIndex) {
     return;
   }
 
-  // Create map
-  const roundMap = L.map(el, {
-    center: [47.3788, 8.5481],
-    zoom: 13,
-    zoomControl: true,
-    attributionControl: false
-  });
-
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png", {
-    subdomains: "abcd",
-    maxZoom: 19,
-  }).addTo(roundMap);
-
-  const bounds = [];
-
-  guesses.forEach(g => {
-    const crossIcon = L.divIcon({
-      className: "cross-marker",
-      html: `<div class="cross-shape"></div>`,
-      iconSize: [16, 16],
-      iconAnchor: [8, 8]
-    });
-
-    L.marker([g.lat, g.lng], { icon: crossIcon })
-      .bindTooltip(`${g.name}<br>${g.distance}m`, { direction: "top" })
-      .addTo(roundMap);
-
-    bounds.push([g.lat, g.lng]);
-
-    const squareIcon = L.divIcon({
-      className: "square-marker",
-      html: `<div class="square-shape"></div>`,
-      iconSize: [14, 14],
-      iconAnchor: [7, 7]
-    });
-
-    L.marker([g.correctLat, g.correctLng], { icon: squareIcon })
-      .bindTooltip(`Correct`, { direction: "top" })
-      .addTo(roundMap);
-
-    bounds.push([g.correctLat, g.correctLng]);
-
-    L.polyline(
-      [[g.lat, g.lng], [g.correctLat, g.correctLng]],
-      { color: "#76e4f7", weight: 2, opacity: 0.8 }
-    ).addTo(roundMap);
-  });
-
-  if (bounds.length) roundMap.fitBounds(bounds, { padding: [30, 30] });
-
-  // ⭐ CRITICAL FIX ⭐
-  // Wait until the screen is fully rendered AND opacity transition is complete
+  // ⭐⭐⭐ THE FIX: WAIT FOR BROWSER TO RENDER THE SCREEN ⭐⭐⭐
   setTimeout(() => {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        roundMap.invalidateSize(true);
+
+        // --- Create the map AFTER the DOM is visible ---
+        const roundMap = L.map(el, {
+          center: [47.3788, 8.5481],
+          zoom: 13,
+          zoomControl: true,
+          attributionControl: false
+        });
+
+        L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png", {
+          subdomains: "abcd",
+          maxZoom: 19,
+        }).addTo(roundMap);
+
+        const bounds = [];
+
+        guesses.forEach(g => {
+          const crossIcon = L.divIcon({
+            className: "cross-marker",
+            html: `<div class="cross-shape"></div>`,
+            iconSize: [16, 16],
+            iconAnchor: [8, 8]
+          });
+
+          L.marker([g.lat, g.lng], { icon: crossIcon })
+            .bindTooltip(`${g.name}<br>${g.distance}m`, { direction: "top" })
+            .addTo(roundMap);
+          bounds.push([g.lat, g.lng]);
+
+          const squareIcon = L.divIcon({
+            className: "square-marker",
+            html: `<div class="square-shape"></div>`,
+            iconSize: [14, 14],
+            iconAnchor: [7, 7]
+          });
+
+          L.marker([g.correctLat, g.correctLng], { icon: squareIcon })
+            .bindTooltip(`Correct`, { direction: "top" })
+            .addTo(roundMap);
+          bounds.push([g.correctLat, g.correctLng]);
+
+          L.polyline(
+            [[g.lat, g.lng], [g.correctLat, g.correctLng]],
+            { color: "#76e4f7", weight: 2, opacity: 0.8 }
+          ).addTo(roundMap);
+        });
+
+        if (bounds.length) {
+          roundMap.fitBounds(bounds, { padding: [30, 30] });
+        }
+
+        // Final layout fix
+        setTimeout(() => roundMap.invalidateSize(true), 120);
+
+        el.classList.add("ready");
+
       });
     });
-  }, 400);
-
-  el.classList.add("ready");
+  }, 50);
 }
 
 
-function showFinalMultiplayerMap() {
-  const mapContainer = document.getElementById("result-map");
-  if (!mapContainer) return;
 
-  // Reset
-  mapContainer.innerHTML = "";
-  const mapFinal = L.map(mapContainer).setView([47.3769, 8.5417], 13);
+async function showFinalMultiplayerMap() {
+  const container = document.getElementById("result-map");
+  if (!container) return;
 
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19
-  }).addTo(mapFinal);
+  document.getElementById("screen-result").style.display = "block";
 
-  const bounds = [];
+  // Reset old map
+  if (container._leaflet_id) container._leaflet_id = null;
+  container.innerHTML = "";
 
-  // Group markers
-  const guessLayer = L.layerGroup().addTo(mapFinal);
-  const correctLayer = L.layerGroup().addTo(mapFinal);
+  // Load building info (photos + hints)
+  let allQuestions = [];
+  try {
+    const res = await fetch("data/questions.json");
+    allQuestions = await res.json();
+  } catch (err) {
+    console.error("Failed to load questions.json:", err);
+  }
 
-  // Helper icon makers
-  const playerColorMap = {};
-  multiplayerPlayers.forEach(p => {
-    playerColorMap[p.id] = p.color || "#8aa1ff";
-  });
+  // 🔥 Fetch ALL guesses for this room — every round
+  const guessesRef = fbCollection(db, "rooms", roomId, "guesses");
+  const snap = await fbGetDocs(guessesRef);
+  const allGuesses = snap.docs.map(d => d.data());
 
-  const makeCrossIconFinal = color =>
-    L.divIcon({
-      className: "cross-marker",
-      html: `<div class="cross-shape" style="background:${color}"></div>`,
-      iconSize: [16, 16],
-      iconAnchor: [8, 8]
+  // Build map
+  setTimeout(() => {
+    const mapFinal = L.map(container, {
+      center: [47.3769, 8.5417],
+      zoom: 13
     });
 
-  const makeCorrectSquareIcon = () =>
-    L.divIcon({
-      className: "square-marker",
-      html: `<div class="square-shape"></div>`,
-      iconSize: [14, 14],
-      iconAnchor: [7, 7]
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png", {
+      subdomains: "abcd",
+      maxZoom: 19
+    }).addTo(mapFinal);
+
+    const bounds = [];
+
+    const guessLayer = L.layerGroup().addTo(mapFinal);
+    const correctLayer = L.layerGroup().addTo(mapFinal);
+
+    // Helper: player colors
+    const playerColorMap = {};
+    multiplayerPlayers.forEach(p => {
+      playerColorMap[p.id] = p.color || "#8aa1ff";
     });
 
-  // Add all guesses
-  multiplayerGuesses.forEach(g => {
-    if (g.lat != null && g.lng != null) {
-      const guessMarker = L.marker([g.lat, g.lng], {
-        icon: makeCrossIconFinal(playerColorMap[g.playerId])
+    allGuesses.forEach(g => {
+      const color = playerColorMap[g.playerId] || "#8aa1ff";
+
+      // --- Guess marker ✖ ---
+      if (g.lat != null && g.lng != null) {
+        L.marker([g.lat, g.lng], {
+          icon: L.divIcon({
+            className: "cross-marker",
+            html: `<div class="cross-shape" style="background:${color}"></div>`,
+            iconSize: [16, 16],
+            iconAnchor: [8, 8]
+          })
+        })
+          .bindPopup(`<strong>${g.name}</strong><br>${g.distance}m`)
+          .addTo(guessLayer);
+
+        bounds.push([g.lat, g.lng]);
+      }
+
+      // --- Find building info ---
+      const qInfo = allQuestions.find(q => q.id === g.questionId);
+
+      const title = qInfo?.answer || "Unknown building";
+      const img = qInfo?.image || "";
+      const hint = qInfo?.hint || "No hint available.";
+
+      // --- Correct marker ■ ---
+      L.marker([g.correctLat, g.correctLng], {
+        icon: L.divIcon({
+          className: "square-marker",
+          html: `<div class="square-shape"></div>`,
+          iconSize: [14, 14],
+          iconAnchor: [7, 7]
+        })
       })
-        .bindPopup(`<strong>${g.name}</strong><br>Guess<br>${g.distance} m`)
-        .addTo(guessLayer);
+        .bindPopup(`
+          <div class="guess-popup">
+            <div class="popup-header" style="background:#60d394;">🏢 ${title}</div>
+            <div class="popup-body">
+              ${img ? `<img src="${img}" style="width:100%;border-radius:8px;margin-bottom:6px;">` : ""}
+              <div>💡 ${hint}</div>
+            </div>
+          </div>
+        `)
+        .addTo(correctLayer);
 
-      bounds.push([g.lat, g.lng]);
+      bounds.push([g.correctLat, g.correctLng]);
+
+      // --- ⭐ connection line from guess → correct ---
+      if (g.lat != null && g.lng != null) {
+        L.polyline(
+          [
+            [g.lat, g.lng],
+            [g.correctLat, g.correctLng]
+          ],
+          {
+            color,
+            weight: 2.5,
+            opacity: 0.9,
+            dashArray: "6,4"
+          }
+        ).addTo(correctLayer);
+      }
+    });
+
+    if (bounds.length > 0) {
+      mapFinal.fitBounds(bounds, { padding: [40, 40] });
     }
 
-    // Correct point
-    const correctMarker = L.marker([g.correctLat, g.correctLng], {
-      icon: makeCorrectSquareIcon()
-    })
-      .bindPopup(`<strong>${g.name}</strong><br>Correct answer`)
-      .addTo(correctLayer);
+    setTimeout(() => mapFinal.invalidateSize(), 200);
 
-    bounds.push([g.correctLat, g.correctLng]);
-  });
-
-  if (bounds.length > 0) {
-    mapFinal.fitBounds(bounds, { padding: [40, 40] });
-  }
+  }, 50);
 }
+
 
 
 
