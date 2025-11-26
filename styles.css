@@ -703,6 +703,74 @@ body.in-game .header h1 {
   display: none;
 }
 
+/* -------------------------------------------
+    🌞 LIGHT MODE THEME
+------------------------------------------- */
+body.light {
+  --bg: #f7f7f9;
+  --bg-alt: #ffffff;
+  --text: #202020;
+  --muted: #555;
+  --border: #d0d0d0;
+
+  --btn-bg: #efefef;
+  --btn-text: #1a1a1a;
+  --btn-primary-bg: #0066ff;
+  --btn-primary-text: #ffffff;
+
+  background: var(--bg);
+  color: var(--text);
+}
+
+body.light .screen,
+body.light .container {
+  background: var(--bg-alt);
+  color: var(--text);
+}
+
+body.light header,
+body.light .header {
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+}
+
+body.light .btn {
+  background: var(--btn-bg);
+  color: var(--btn-text);
+  border: 1px solid var(--border);
+}
+
+body.light .btn.primary {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
+}
+
+body.light table {
+  background: var(--bg-alt);
+  color: var(--text);
+}
+
+body.light td,
+body.light th {
+  border-color: var(--border);
+}
+
+body.light .map-container {
+  border: 1px solid var(--border);
+}
+
+/* Timer warning colors */
+body.light #timer-display.warning {
+  color: #b85b00;
+}
+body.light #timer-display.critical {
+  color: #cc0000;
+}
+
+body.light .guess-popup .popup-header {
+  color: #fff;
+}
+
 
 /* ============================================================
    🏆 Fancy Round Standings Table

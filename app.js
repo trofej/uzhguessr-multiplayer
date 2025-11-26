@@ -59,11 +59,33 @@ const hintText = document.getElementById("hint-text");
 
 // 🧱 Theme toggle
 const btnTheme = document.getElementById("btn-theme");
-// Force a consistent dark theme everywhere
-let currentTheme = "dark";
-document.body.classList.remove("light");
-btnTheme.textContent = "🌞 Light Mode";
-btnTheme.style.display = "none"; // hide toggle to keep design consistent
+
+// Load saved theme or default to dark
+let currentTheme = localStorage.getItem("theme") || "dark";
+
+// Apply selected theme
+document.body.classList.toggle("light", currentTheme === "light");
+
+// Update button label
+btnTheme.textContent =
+  currentTheme === "light" ? "🌙 Dark Mode" : "🌞 Light Mode";
+
+// Show the theme button
+btnTheme.style.display = "inline-block";
+
+// Button click handler
+btnTheme.addEventListener("click", () => {
+  document.body.classList.toggle("light");
+
+  const newTheme = document.body.classList.contains("light")
+    ? "light"
+    : "dark";
+
+  localStorage.setItem("theme", newTheme);
+
+  btnTheme.textContent =
+    newTheme === "light" ? "🌙 Dark Mode" : "🌞 Light Mode";
+});
 
 // 🆕 Sound elements
 const soundCorrect = document.getElementById("sound-correct");
