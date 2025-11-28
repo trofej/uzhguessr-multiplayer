@@ -45,7 +45,7 @@
   --bg:#0f1221;
   --card:#171a2e;
   --text:#e8ecff;
-  --muted:#aab3d6;
+  --muted:#aab3d6; 
   --accent:#8aa1ff;
   --accent-2:#76e4f7;
   --danger:#ff6b6b;
@@ -960,4 +960,106 @@ body.light .guess-popup .popup-header {
     padding: 0.35rem 0.3rem;
   }
 
+
+  #screen-result {
+  padding-top: 1.5rem !important;
+  padding-bottom: 2.5rem !important;
 }
+
+#screen-result h2 {
+  margin-bottom: 1.4rem !important;
+}
+
+#result-summary {
+  margin: 0.6rem 0 1.8rem !important;
+  font-size: 1.15rem;
+  line-height: 1.45;
+}
+
+#mp-final {
+  margin-top: 2rem !important;
+  margin-bottom: 1.8rem !important;
+}
+
+#mp-final table {
+  margin-top: 0.9rem !important;
+}
+
+#mp-round-standings {
+  margin-top: 1.8rem !important;
+  margin-bottom: 2rem !important;
+}
+
+#name-entry {
+  margin-top: 2rem !important;
+  margin-bottom: 2rem !important;
+}
+
+#leaderboard {
+  margin-top: 2.2rem !important;
+  margin-bottom: 2.5rem !important;
+}
+
+#leaderboard table {
+  margin-top: 0.9rem !important;
+}
+
+#btn-restart {
+  margin-top: 2.2rem !important;
+  padding: 1rem 1.25rem !important;
+}
+
+}
+
+/* ============================================================
+   🎉 FINAL RESULT PAGE — Global spacing & breathing room
+   ============================================================ */
+
+#screen-result {
+  padding-top: 2rem !important;
+  padding-bottom: 3rem !important;
+}
+
+#screen-result h2 {
+  margin-bottom: 1.6rem !important;
+}
+
+#result-summary {
+  margin: 1rem 0 2rem !important;
+  font-size: 1.2rem;
+  line-height: 1.45;
+}
+
+#mp-final {
+  margin-top: 2.2rem !important;
+  margin-bottom: 2.4rem !important;
+}
+
+#mp-final table {
+  margin-top: 1rem !important;
+}
+
+#mp-round-standings {
+  margin-top: 2rem !important;
+  margin-bottom: 2.2rem !important;
+}
+
+#name-entry {
+  margin-top: 2.4rem !important;
+  margin-bottom: 2.4rem !important;
+}
+
+#leaderboard {
+  margin-top: 2.4rem !important;
+  margin-bottom: 2.6rem !important;
+}
+
+#leaderboard table {
+  margin-top: 1rem !important;
+}
+
+#btn-restart {
+  margin-top: 2.6rem !important;
+  padding: 1rem 1.3rem !important;
+}
+
