@@ -1606,7 +1606,10 @@ function showSingleplayerRoundResults() {
   // Switch to results screen
   setScreen(screenResult);
   scrollToTop();
-  nameEntry.style.display = "none";
+  nameEntry.style.display = "block";
+
+  // fill the all-time leaderboard
+  renderFinalLeaderboard();
   resultSummary.textContent = `Round ${currentIndex + 1} results`;
 
   // --- CLEAN OLD MAP SAFELY ---
@@ -1695,6 +1698,8 @@ async function finish() {
   setScreen(screenResult);
   scrollToTop();
   nameEntry.style.display = "block";
+
+  await renderFinalLeaderboard();
 
   setTimeout(async () => {
     const el = document.getElementById("result-map");
@@ -1902,16 +1907,24 @@ async function loadLeaderboard() {
   } catch { return []; }
 }
 
+window.loadLeaderboard = loadLeaderboard;
+
 async function renderLeaderboard() {
   const data = await loadLeaderboard();
-  const highlightName = lastSavedName || playerNameInput.value.trim();
+  const highlightName = lastSavedName || localStorage.getItem("lastSavedName") || playerNameInput.value.trim();
   leaderboardBody.innerHTML = data.map((e, i) => {
     const name = e.name || "";
     const isSelf = highlightName && name.toLowerCase().trim() === highlightName.toLowerCase().trim();
     return `<tr class="${isSelf ? "leaderboard-self pulse-highlight" : ""}">
-      <td>${i + 1}</td><td>${escapeHtml(name)}</td><td>${e.points}</td><td>${Number(e.distance).toFixed(2)}</td></tr>`;
+      <td>${i + 1}</td>
+      <td>${escapeHtml(name)}</td>
+      <td>${e.points}</td>
+      <td>${Number(e.distance).toFixed(2)}</td>
+    </tr>`;
   }).join("");
-  setTimeout(() => document.querySelectorAll(".pulse-highlight").forEach(el => el.classList.remove("pulse-highlight")), 1500);
+  setTimeout(() => {
+    document.querySelectorAll(".pulse-highlight").forEach(el => el.classList.remove("pulse-highlight"));
+  }, 1500);
 }
 
 async function renderStartLeaderboard() {
@@ -1923,7 +1936,8 @@ async function renderStartLeaderboard() {
       <td>${escapeHtml(e.name || "")}</td>
       <td>${e.points}</td>
       <td>${Number(e.distance).toFixed(2)}</td>
-    </tr>`).join("");
+    </tr>
+  `).join("");
 }
 
 
@@ -2015,12 +2029,28 @@ btnRestart.addEventListener("click", () => {
 btnSaveScore.addEventListener("click", async () => {
   if (scoreSaved) return alert("Score already saved ✅");
   if (!currentGameGuesses.length) return alert("Finish a game before saving.");
+
   const name = (playerNameInput.value.trim() || "Anonymous").slice(0, 20);
   const gameId = `game_${Date.now()}`;
+
   try {
-    await fbAddDoc(fbCollection(db, "leaderboard"), { name, points, distance: Number(totalDistanceKm.toFixed(2)), ts: Date.now() });
+    await fbAddDoc(fbCollection(db, "leaderboard"), {
+      name,
+      points,
+      distance: Number(totalDistanceKm.toFixed(2)),
+      ts: Date.now()
+    });
+
     for (const g of currentGameGuesses)
-      await fbAddDoc(fbCollection(db, "guesses"), { user: name, lat: g.lat, lng: g.lng, question: g.question, distance: g.distance, ts: Date.now() });
+      await fbAddDoc(fbCollection(db, "guesses"), {
+        user: name,
+        lat: g.lat,
+        lng: g.lng,
+        question: g.question,
+        distance: g.distance,
+        ts: Date.now()
+      });
+
     const userRef = fbDoc(db, "user_guesses", name);
     const snap = await fbGetDoc(userRef);
     const data = snap.exists() ? snap.data() : { games: [] };
@@ -2029,10 +2059,14 @@ btnSaveScore.addEventListener("click", async () => {
 
     scoreSaved = true;
     lastSavedName = name;
+    localStorage.setItem("lastSavedName", name);
+
     playerNameInput.disabled = true;
     btnSaveScore.disabled = true;
+
     await renderLeaderboard();
     await renderStartLeaderboard();
+
     alert("Score saved ✅");
   } catch (err) {
     console.error(err);

@@ -248,7 +248,7 @@ section {
   100% { box-shadow: 0 0 5px rgba(255, 235, 60, 0.2); }
 }
 
-/* đźŽ¨ Improved Start Screen Leaderboard Layout */
+/* Improved Start Screen Leaderboard Layout */
 #leaderboard-start {
   margin-top: 2rem;
   padding: 1rem 1.25rem 1.25rem;
@@ -300,6 +300,71 @@ section {
   background: rgba(255,255,255,0.05);
   transition: background 0.25s ease;
 }
+
+
+/* Improved End Screen Leaderboard Layout */
+
+/* ============================================================
+   🏆 Final Screen Leaderboard – Same styling as Start Screen
+   ============================================================ */
+
+#leaderboard-final {
+  margin-top: 2rem;
+  padding: 1rem 1.25rem 1.25rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 14px;
+  box-shadow: inset 0 0 12px rgba(255,255,255,0.03);
+}
+
+#leaderboard-final h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: var(--accent);
+  text-align: left;
+  font-size: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+#leaderboard-final h3::before {
+  content: "🏆";
+  font-size: 1.3rem;
+  margin-right: 0.2rem;
+}
+
+#leaderboard-final table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+  margin-top: 0.5rem;
+}
+
+#leaderboard-final th,
+#leaderboard-final td {
+  padding: 0.6rem 0.8rem;
+}
+
+#leaderboard-final th {
+  background: rgba(255,255,255,0.06);
+  color: var(--accent-2);
+  font-weight: 600;
+  text-align: left;
+}
+
+#leaderboard-final td {
+  color: var(--text);
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+
+#leaderboard-final tbody tr:hover {
+  background: rgba(255,255,255,0.05);
+  transition: background 0.25s ease;
+}
+
 
 /* Games played counter */
 #games-played {
@@ -959,6 +1024,25 @@ body.light .guess-popup .popup-header {
   #leaderboard td {
     padding: 0.35rem 0.3rem;
   }
+
+  .leaderboard-box {
+  margin-top: 2rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+  background: var(--bg2);
+}
+
+#leaderboard-start-final table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#leaderboard-start-final td,
+#leaderboard-start-final th {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
 
 
   #screen-result {

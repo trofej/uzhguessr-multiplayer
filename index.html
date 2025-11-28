@@ -170,6 +170,7 @@
   <h2>Results</h2>
   <p id="result-summary"></p>
 
+  <!-- (Multiplayer round window) -->
   <div id="mp-round-standings" class="standings-box" style="display:none;">
     <h3>Current Standings</h3>
     <table>
@@ -180,6 +181,7 @@
     </table>
   </div>
 
+  <!-- (Multiplayer final scoreboard) -->
   <div id="mp-final" style="display:none;">
     <h3>Final Standings</h3>
     <table id="mp-final-table">
@@ -190,18 +192,33 @@
     </table>
   </div>
 
+  <!-- Result map -->
   <div id="result-map" class="map-container"></div>
 
+  <!-- 🌍 GLOBAL ALL-TIME LEADERBOARD -->
   <div id="name-entry">
-    <label for="player-name">Enter your name:</label>
-    <input id="player-name" type="text" maxlength="20">
-    <button id="btn-save-score" class="btn primary">Save</button>
+    <label for="player-name" style="color:var(--muted)">Enter your name for the leaderboard:</label>
+    <div style="margin-top:0.5rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+      <input id="player-name" type="text" maxlength="20" placeholder="Your name" />
+      <button id="btn-save-score" class="btn primary">Save Score</button>
+    </div>
   </div>
 
-  <div id="leaderboard">
+  <!-- 🏆 FINAL LEADERBOARD (must use id="leaderboard-final") -->
+  <div id="leaderboard-final">
     <h3>Leaderboard</h3>
+
     <table id="leaderboard-table">
-      <thead><tr><th>#</th><th>Name</th><th>Points</th><th>Distance</th></tr></thead>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Name</th>
+          <th>Points</th>
+          <th>Total Distance (km)</th>
+        </tr>
+      </thead>
+
+      <!-- Required by renderLeaderboard() -->
       <tbody id="leaderboard-body"></tbody>
     </table>
   </div>
