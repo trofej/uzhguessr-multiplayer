@@ -1,5 +1,5 @@
 // ✅ UZH Map Guessr – Timed Mode Edition + Sound Effects
-const TOTAL_QUESTIONS = 5;
+const TOTAL_QUESTIONS = 2;
 const ROUND_TIME = 15;
 
 let currentIndex = 0, points = 0, userGuess = null, guessLocked = false;
@@ -2062,10 +2062,12 @@ btnNext.addEventListener("click", () => {
   const progress = (currentIndex / gameQuestions.length) * 100;
   document.getElementById("progress-bar").style.width = `${progress}%`;
 });
-btnStart.addEventListener("click", () => {
-  enterGameMode();
-  startGame();
-});
+if (btnStart) {
+  btnStart.addEventListener("click", () => {
+    enterGameMode();
+    startGame();
+  });
+}
 btnRestart.addEventListener("click", () => {
   exitGameMode();
   setScreen(screenStart);
