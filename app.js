@@ -1,5 +1,5 @@
 // ✅ UZH Map Guessr – Timed Mode Edition + Sound Effects
-const TOTAL_QUESTIONS = 2;
+const TOTAL_QUESTIONS = 5;
 const ROUND_TIME = 15;
 
 let currentIndex = 0, points = 0, userGuess = null, guessLocked = false;
@@ -7,6 +7,7 @@ let QUESTIONS = [], gameQuestions = [];
 let totalDistanceKm = 0, gamesPlayed = 0, streak = 0;
 let currentGameGuesses = [], scoreSaved = false;
 let lastSavedName = null;
+let gameFinished = false; 
 
 let timerInterval = null, timeLeft = 0;
 let hintUsed = false;
@@ -40,9 +41,9 @@ const roundIndicator = document.getElementById("round-indicator");
 const scoreIndicator = document.getElementById("score-indicator");
 const resultSummary = document.getElementById("result-summary");
 const questionImage = document.getElementById("question-image");
-const nameEntry = document.getElementById("name-entry");
-const playerNameInput = document.getElementById("player-name");
-const btnSaveScore = document.getElementById("btn-save-score");
+const nameEntry = document.getElementById("name-entry-final");
+const playerNameInput = document.getElementById("player-name-final");
+const btnSaveScore = document.getElementById("btn-save-score-final");
 const leaderboardBody = document.getElementById("leaderboard-body");
 const leaderboardBodyStart = document.getElementById("leaderboard-body-start");
 const btnConfirmGuess = document.getElementById("btn-confirm-guess");
@@ -1037,6 +1038,8 @@ function renderRoundStandings() {
 function handleRoomFinished(room) {
   console.log("🏁 Game finished → showing final results");
 
+  gameFinished = true;   // 🔥 NEW: multiplayer session is finished too
+
   // Switch to the final multiplayer results screen
   const finalScreen = document.getElementById("screen-result");
   setScreen(finalScreen);
@@ -1341,6 +1344,7 @@ async function startGame() {
   streak = 0;
   currentGameGuesses = [];
   scoreSaved = false;
+  gameFinished = false;        // 🔥 NEW: starting a fresh session
 
   playerNameInput.disabled = false;
   btnSaveScore.disabled = false;
@@ -1615,8 +1619,25 @@ function showSingleplayerRoundResults() {
   // --- CLEAN OLD MAP SAFELY ---
   destroyLeafletMap(el);
 
-  const g = currentGameGuesses[currentGameGuesses.length - 1];
-  if (!g) return;
+  let g = currentGameGuesses[currentIndex];
+
+  // If missing guess — create a null entry for this round
+  if (!g) {
+      const q = isMultiplayer
+          ? QUESTIONS[ gameQuestions[currentIndex] ]
+          : gameQuestions[currentIndex];
+
+      g = {
+          question: q.answer,
+          lat: null,
+          lng: null,
+          correctLat: q.lat,
+          correctLng: q.lng,
+          distance: null
+      };
+
+      currentGameGuesses[currentIndex] = g;
+  }
 
   // --- CREATE A NEW RESULT MAP ---
   const resultMap = L.map(el, {
@@ -1673,18 +1694,18 @@ function showSingleplayerRoundResults() {
 
   // --- SHOW RESULTS FOR 7 SECONDS ---
   setTimeout(() => {
-    // SAFELY DESTROY MAP TO PREVENT LEAFLET ERRORS
-    destroyLeafletMap(document.getElementById("result-map"));
+      destroyLeafletMap(document.getElementById("result-map"));
 
-    // Continue to next round or finish
-    if (currentIndex < gameQuestions.length - 1) {
-      currentIndex++;
-      setScreen(screenGame);
-      renderRound();
-    } else {
-      finish();
-    }
+      const lastRoundIndex = gameQuestions.length - 1;
 
+      if (currentIndex < lastRoundIndex) {
+          currentIndex++;
+          setScreen(screenGame);
+          renderRound();
+      } else {
+          // ALWAYS finish the game here
+          finish();
+      }
   }, 10000);
 }
 
@@ -1692,6 +1713,31 @@ function showSingleplayerRoundResults() {
 
 // --- Finish ---
 async function finish() {
+  if (!currentGameGuesses.length) {
+    console.warn("⚠️ force-finalizing the game because guesses array was empty");
+  }
+
+
+  // 🔧 Ensure all rounds exist in currentGameGuesses
+  for (let i = 0; i < gameQuestions.length; i++) {
+      if (!currentGameGuesses[i]) {
+          const q = isMultiplayer
+              ? QUESTIONS[gameQuestions[i]]
+              : gameQuestions[i];
+
+          currentGameGuesses[i] = {
+              question: q.answer,
+              lat: null,
+              lng: null,
+              correctLat: q.lat,
+              correctLng: q.lng,
+              distance: null
+          };
+      }
+  }
+
+  gameFinished = true;  // 🔥 NEW: this session is now officially finished
+
   document.getElementById("progress-bar").style.width = "100%";
   stopTimer();
   resultSummary.textContent = `You scored ${points} points 🎯 Total distance: ${totalDistanceKm.toFixed(2)} km`;
@@ -2028,7 +2074,11 @@ btnRestart.addEventListener("click", () => {
 // --- Save Score ---
 btnSaveScore.addEventListener("click", async () => {
   if (scoreSaved) return alert("Score already saved ✅");
-  if (!currentGameGuesses.length) return alert("Finish a game before saving.");
+
+  // 🔥 Only block if the game is clearly not finished AND we have no data
+  if (!gameFinished && !currentGameGuesses.length) {
+    return alert("Finish a game before saving.");
+  }
 
   const name = (playerNameInput.value.trim() || "Anonymous").slice(0, 20);
   const gameId = `game_${Date.now()}`;
@@ -2041,7 +2091,8 @@ btnSaveScore.addEventListener("click", async () => {
       ts: Date.now()
     });
 
-    for (const g of currentGameGuesses)
+    // If there are guesses, save them; if not (e.g. multiplayer), this loop is just skipped
+    for (const g of currentGameGuesses) {
       await fbAddDoc(fbCollection(db, "guesses"), {
         user: name,
         lat: g.lat,
@@ -2050,6 +2101,7 @@ btnSaveScore.addEventListener("click", async () => {
         distance: g.distance,
         ts: Date.now()
       });
+    }
 
     const userRef = fbDoc(db, "user_guesses", name);
     const snap = await fbGetDoc(userRef);
