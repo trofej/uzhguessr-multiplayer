@@ -207,6 +207,22 @@ function exitGameMode() {
 
 // Live browser of all open rooms
 function startRoomBrowser() {
+  const title = document.getElementById("mp-open-rooms-title");
+
+  // 🚫 If QR-join mode → hide everything
+  if (window.mpQrJoinMode) {
+    if (title) title.style.display = "none";
+    if (mpRoomListEl) {
+      mpRoomListEl.style.display = "none";
+      mpRoomListEl.innerHTML = "";
+    }
+    return;
+  }
+
+  // Normal mode → show title + list
+  if (title) title.style.display = "block";
+  if (mpRoomListEl) mpRoomListEl.style.display = "block";
+
   if (roomsUnsub) roomsUnsub();
 
   const roomsRef = fbCollection(db, "rooms");
@@ -247,8 +263,9 @@ function renderRoomBrowser(rooms) {
 
 
 btnOpenMp.addEventListener("click", () => {
+  window.mpQrJoinMode = false; // normal mode
   setScreen(document.getElementById("screen-mp-menu"));
-  startRoomBrowser();    // 🔥 start scanning rooms
+  startRoomBrowser();
 });
 
 btnBackToStart.addEventListener("click", () => {
@@ -272,27 +289,59 @@ function getPlayerName() {
   return (raw || "Anonymous").slice(0, 20);
 }
 
+
+function hideRoomQR() {
+  const box = document.getElementById("mp-qr-box");
+  const canvas = document.getElementById("mp-qr");
+  if (!box || !canvas) return;
+  canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+  box.style.display = "none";
+}
+
+
+function showRoomQR(code) {
+  const box = document.getElementById("mp-qr-box");
+  const canvas = document.getElementById("mp-qr");
+  if (!box || !canvas) return;
+
+  const joinUrl = `${location.origin}${location.pathname}?join=${code}`;
+
+  new QRious({
+    element: canvas,
+    value: joinUrl,
+    size: 180,
+    level: "H"
+  });
+
+  box.style.display = "block";
+}
+
+
+
 async function createRoom() {
   const name = getPlayerName();
   if (!name) return alert("Please enter a name first!");
 
+  // 🧹 Reset QR
+  hideRoomQR();
+
   isMultiplayer = true;
   isHost = true;
 
-  // Create the room document
+  const generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
+
   const roomRef = await fbAddDoc(fbCollection(db, "rooms"), {
     createdAt: Date.now(),
     stage: "waiting",
     hostId: playerId,
-    code: Math.floor(100000 + Math.random() * 900000).toString(), // 6-digit code
+    code: generatedCode
   });
 
   roomId = roomRef.id;
 
-  // Add host to players subcollection
   await fbSetDoc(fbDoc(db, "rooms", roomId, "players", playerId), {
     name,
-    color: "#" + Math.floor(Math.random() * 16777215).toString(16).padStart(6, "0"),
+    color: "#" + Math.floor(Math.random()*16777215).toString(16).padStart(6,"0"),
     score: 0,
     totalDistance: 0,
     ready: true,
@@ -300,21 +349,26 @@ async function createRoom() {
     lastRoundFinished: -1
   });
 
-  // Immediately jump to lobby UI
+  // Switch to lobby screen
   setScreen(document.getElementById("screen-mp-lobby"));
 
-  // Fill lobby UI with initial information
-  document.getElementById("mp-room-code").textContent = "------";
+  // UPDATE ROOM CODE TEXT
+  document.getElementById("mp-room-code").textContent = generatedCode;
+
+  // 🟩🟩🟩 SHOW THE QR CODE HERE
+  showRoomQR(generatedCode);
+
+  // Continue as before
   document.getElementById("mp-player-list").innerHTML = `
     <li><strong>Loading room…</strong></li>
   `;
 
-  // Start Firebase listeners (players, room status, start events)
   startRoomListeners();
 }
 
 
 async function joinRoom() {
+  hideRoomQR();
   const name = getPlayerName();
   if (!name) return alert("Please enter a name first!");
 
@@ -335,7 +389,7 @@ async function joinRoom() {
   }
 
   isMultiplayer = true;
-  isHost = false;        // <--- IMPORTANT
+  isHost = false;
   roomId = foundRoom.id;
 
   // Join room player list
@@ -352,6 +406,9 @@ async function joinRoom() {
   // Switch UI to lobby
   setScreen(document.getElementById("screen-mp-lobby"));
 
+  // 🟩 SHOW QR CODE FOR JOINERS TOO
+  showRoomQR(foundRoom.code);
+
   // Prepare lobby placeholders
   document.getElementById("mp-room-code").textContent = "------";
   document.getElementById("mp-player-list").innerHTML = `
@@ -365,7 +422,10 @@ async function joinRoom() {
 
 
 
+
 async function mpJoinRoomById(roomIdValue, codeValue) {
+
+  hideRoomQR();
   const name = getPlayerName();
 
   roomId = roomIdValue;
@@ -380,20 +440,29 @@ async function mpJoinRoomById(roomIdValue, codeValue) {
   const data = snap.data();
   isHost = (data.hostId === playerId);
 
-  // add or update player
-  await fbSetDoc(fbDoc(db, "rooms", roomId, "players", playerId), {
-    name,
-    color: "#"+Math.floor(Math.random()*16777215).toString(16).padStart(6,"0"),
-    score: 0,
-    totalDistance: 0,
-    joinedAt: Date.now(),
-    ready: true,
-    lastRoundFinished: -1
-  }, { merge: true });
+  // Add or update player
+  await fbSetDoc(
+    fbDoc(db, "rooms", roomId, "players", playerId),
+    {
+      name,
+      color: "#"+Math.floor(Math.random()*16777215).toString(16).padStart(6,"0"),
+      score: 0,
+      totalDistance: 0,
+      joinedAt: Date.now(),
+      ready: true,
+      lastRoundFinished: -1
+    },
+    { merge: true }
+  );
 
   startRoomListeners();
   showLobbyInfo();
+
+  // 🟩 SHOW QR CODE FOR JOINERS (room browser)
+  showRoomQR(codeValue);
 }
+
+
 
 function safeInvalidate(m) {
   if (!m || !m.invalidateSize) return;
@@ -1147,6 +1216,28 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 
+// --- 🌐 QR JOIN HANDLER (NO AUTOJOIN) ---
+document.addEventListener("DOMContentLoaded", () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const joinCode = urlParams.get("join");
+
+  if (joinCode) {
+    window.mpQrJoinMode = true;
+
+    setScreen(screenMpMenu);
+
+    mpJoinBox.style.display = "block";
+    mpJoinCodeInput.value = joinCode;
+
+    // 🎯 Hide open rooms title + list
+    document.getElementById("mp-open-rooms-title").style.display = "none";
+    mpRoomListEl.style.display = "none";
+
+    mpNameInput.focus();
+  }
+});
+
+
 // --- Timer ---
 function startTimer() {
   clearInterval(timerInterval);
@@ -1280,9 +1371,11 @@ function hideLobbyUI() {
   const resultScreen = document.getElementById("screen-result");
   if (resultScreen) resultScreen.classList.remove("active");
 
-  // Also hide the open rooms list
   const browser = document.getElementById("mp-room-list");
   if (browser) browser.style.display = "none";
+
+  // 🧹 NEW — clear QR if lobby is exited
+  hideRoomQR();
 }
 
 

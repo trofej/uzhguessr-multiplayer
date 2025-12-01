@@ -268,7 +268,7 @@ section {
   gap: 0.5rem;
 }
 #leaderboard-start h3::before {
-  content: "đźŹ†";
+  content: "🏅";
   font-size: 1.3rem;
   margin-right: 0.2rem;
 }
@@ -767,6 +767,43 @@ body.in-game .header {
 body.in-game .header h1 {
   display: none;
 }
+
+
+
+/* 🔷 Subtle highlight on name field after scanning QR */
+.mp-name-glow {
+  box-shadow: 0 0 8px rgba(0, 180, 255, 0.45);
+  border-color: rgba(0, 180, 255, 0.8) !important;
+  animation: glowPulse 1.6s ease-out forwards;
+}
+
+@keyframes glowPulse {
+  0% { box-shadow: 0 0 0 rgba(0, 180, 255, 0.0); }
+  40% { box-shadow: 0 0 10px rgba(0, 180, 255, 0.5); }
+  100% { box-shadow: 0 0 4px rgba(0, 180, 255, 0.3); }
+}
+
+/* QR invite banner */
+.qr-invite-banner {
+  background: linear-gradient(90deg, #2d87ff, #53c4ff);
+  color: white;
+  padding: 0.55rem 1rem;
+  border-radius: 10px;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  text-align: center;
+  box-shadow: 0 2px 12px rgba(0, 140, 255, 0.3);
+  animation: bannerPop 0.6s ease-out forwards;
+}
+
+@keyframes bannerPop {
+  0% { transform: translateY(-12px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+
+
+
 
 /* -------------------------------------------
     🌞 LIGHT MODE THEME
