@@ -680,66 +680,90 @@ async function safeUpdateRoom(roomId, payload) {
 
 async function startRoomListeners() {
 
+  const roomRef = fbDoc(db, "rooms", roomId);
+  const roomSnap = await fbGetDoc(roomRef);
+  if (!roomSnap.exists()) return;
+  const roomData = roomSnap.data();
+  const hostId = roomData.hostId;
+
+
   if (!roomId) return;
 
   // Stop old listeners
   if (roomUnsub) roomUnsub();
   if (playersUnsub) playersUnsub();
 
-  const roomRef = fbDoc(db, "rooms", roomId);
   const playersRef = fbCollection(db, "rooms", roomId, "players");
 
   // --- PLAYERS SNAPSHOT LISTENER ---
   playersUnsub = fbOnSnapshot(playersRef, async snap => {
 
     multiplayerPlayers = snap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-
-    // Remove ghost players
-    multiplayerPlayers = multiplayerPlayers.filter(p => p.name);
+        id: doc.id,
+        ...doc.data()
+    })).filter(p => p.name);
 
     const realCount = multiplayerPlayers.length;
 
-    // 🔥 Update Firestore playerCount (fixes Open Rooms list refresh)
+    // Update Firestore playerCount
     await safeUpdateRoom(roomId, { playerCount: realCount });
 
+    // -------------------------------------------------
+    // ⭐ HOST DISCONNECTED AUTO-CLOSE LOGIC
+    // -------------------------------------------------
+    const hostStillHere = multiplayerPlayers.some(p => p.id === hostId);
 
-    // --- AUTO DELETE ROOM IF EMPTY ---
-    if (realCount === 0) {
-      console.warn("Room empty → deleting", roomId);
-
-      // delete players
-      const snapPlayers = await fbGetDocs(playersRef);
-      snapPlayers.forEach(p => deleteDoc(p.ref).catch(() => {}));
-
-      // delete guesses
-      const guessesRef = fbCollection(db, "rooms", roomId, "guesses");
-      const snapGuesses = await fbGetDocs(guessesRef);
-      snapGuesses.forEach(g => deleteDoc(g.ref).catch(() => {}));
-
-      // delete the room
-      await deleteDoc(roomRef).catch(() => {});
-
-      leaveRoom();
-      return;
+    // ⚠ The host is NOT here anymore and THIS user is a guest
+    if (!isHost && !hostStillHere) {
+        console.warn("Host disconnected — closing room.");
+        await safeUpdateRoom(roomId, { deleted: true });
+        alert("The host has disconnected. The room has been closed.");
+        leaveRoom();
+        return;
     }
 
-    // Update lobby UI
+    // ⚠ If YOU are the host but your Firestore doc vanished (rare)
+    if (isHost && !hostStillHere) {
+        console.warn("Host doc missing, restoring…");
+        await fbSetDoc(
+            fbDoc(db, "rooms", roomId, "players", playerId),
+            { name: getPlayerName(), restored: true },
+            { merge: true }
+        );
+    }
+
+    // -------------------------------------------------
+    // AUTO-DELETE WHEN EMPTY
+    // -------------------------------------------------
+    if (realCount === 0) {
+        console.warn("Room empty → deleting room", roomId);
+
+        const snapPlayers = await fbGetDocs(playersRef);
+        snapPlayers.forEach(p => deleteDoc(p.ref).catch(() => {}));
+
+        const guessesRef = fbCollection(db, "rooms", roomId, "guesses");
+        const snapGuesses = await fbGetDocs(guessesRef);
+        snapGuesses.forEach(g => deleteDoc(g.ref).catch(() => {}));
+
+        await deleteDoc(roomRef).catch(() => {});
+        leaveRoom();
+        return;
+    }
+
     renderLobbyPlayers();
 
-    // Host progression logic
+    // Host advances rounds
     if (isHost) {
-      const rs = await fbGetDoc(roomRef);
-      if (rs.exists()) {
-        const room = rs.data();
-        if (room.stage === "playing") {
-          maybeHostAdvanceFromPlaying(room);
+        const rs = await fbGetDoc(roomRef);
+        if (rs.exists()) {
+            const room = rs.data();
+            if (room.stage === "playing") {
+                maybeHostAdvanceFromPlaying(room);
+            }
         }
-      }
     }
-  });
+});
+
 
 
   // --- ROOM SNAPSHOT LISTENER ---
