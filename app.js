@@ -27,8 +27,14 @@ let playersUnsub = null;
 let guessesUnsub = null;
 
 let multiplayerPlayers = [];   // cached players in room
+let globalHostId = null;   // ⭐ store host ID for all UI functions
 let multiplayerGuesses = [];   // cached guesses for current round
 
+let alreadyLeavingRoom = false;
+
+
+let hostMissingSince = null;
+const HOST_DISCONNECT_DELAY = 2000; // ms buffer to avoid false disconnects
 
 // UI
 const screenStart = document.getElementById("screen-start");
@@ -54,6 +60,7 @@ const timerDisplay = document.getElementById("timer-display");
 const streakBar = document.getElementById("streak-bar");
 const streakIndicator = document.getElementById("streak-indicator");
 const screenMpRound = document.getElementById("screen-mp-round");
+
 
 // 🆕 Hint system elements
 const btnHint = document.getElementById("btn-hint");
@@ -361,6 +368,17 @@ function showRoomQR(code) {
   const canvas = document.getElementById("mp-qr");
   if (!box || !canvas) return;
 
+  // ⭐ Add glow effect AFTER canvas is defined
+  canvas.classList.add("qr-glow");
+
+  // ⭐ Add animated arrow AFTER box exists
+  if (!document.getElementById("qr-arrow")) {
+    const arrow = document.createElement("div");
+    arrow.id = "qr-arrow";
+    arrow.textContent = "⬆";
+    box.appendChild(arrow);
+  }
+
   const joinUrl = `${location.origin}${location.pathname}?join=${code}`;
 
   new QRious({
@@ -509,6 +527,9 @@ async function joinRoom(code) {
 
 
 async function leaveRoom() {
+  if (alreadyLeavingRoom) return;   // ⭐ prevents duplicate calls
+  alreadyLeavingRoom = true;
+
   if (!roomId) return;
 
   const thisRoomId = roomId;
@@ -519,65 +540,37 @@ async function leaveRoom() {
   if (playersUnsub) playersUnsub();
   if (guessesUnsub) guessesUnsub();
 
-  // Remove player from Firestore
-  if (wasHost) {
+  // 🔥 HOST LOGIC:
+  // Do NOT delete the room here.
+  // The auto-close logic in startRoomListeners() will handle it.
+  if (!wasHost) {
+    try {
+      // Remove this guest from the room
+      const playerRef = fbDoc(db, "rooms", thisRoomId, "players", playerId);
+      await deleteDoc(playerRef).catch(() => {});
 
-      // Delete ALL players including the host
+      // Update count
       const playersSnap = await fbGetDocs(
-          fbCollection(db, "rooms", thisRoomId, "players")
+        fbCollection(db, "rooms", thisRoomId, "players")
       );
 
-      for (const d of playersSnap.docs) {
-          await deleteDoc(d.ref).catch(() => {});
-      }
+      const newCount = playersSnap.docs.length;
 
-      // Delete guesses subcollection
-      const guessesSnap = await fbGetDocs(
-          fbCollection(db, "rooms", thisRoomId, "guesses")
-      );
+      // Update the room count
+      await fbUpdateDoc(fbDoc(db, "rooms", thisRoomId), {
+        playerCount: newCount
+      }).catch(() => {});
 
-      for (const g of guessesSnap.docs) {
-          await deleteDoc(g.ref).catch(() => {});
-      }
-
-      // Delete the room
-      await deleteDoc(fbDoc(db, "rooms", thisRoomId)).catch(() => {});
-  } else {
-      try {
-          const playerRef = fbDoc(db, "rooms", thisRoomId, "players", playerId);
-          await deleteDoc(playerRef);
-
-          // Update playerCount after this user leaves
-          const playersSnap = await fbGetDocs(
-              fbCollection(db, "rooms", thisRoomId, "players")
-          );
-          const newCount = playersSnap.docs.length;
-
-          await fbUpdateDoc(fbDoc(db, "rooms", thisRoomId), {
-              playerCount: newCount
-          });
-
-          // Auto-delete room if empty
-          if (newCount === 0) {
-              console.warn("Room empty → deleting room", thisRoomId);
-
-              // delete guesses
-              const guessesSnap = await fbGetDocs(
-                  fbCollection(db, "rooms", thisRoomId, "guesses")
-              );
-              guessesSnap.forEach(g => deleteDoc(g.ref));
-
-              await deleteDoc(fbDoc(db, "rooms", thisRoomId));
-          }
-
-      } catch (err) {
-          console.error("Error removing player from room:", err);
-      }
+      // Guests: if they are the last player, UI auto-close will detect empty room
+    } catch (err) {
+      console.error("Error removing player:", err);
+    }
+    setTimeout(() => {
+    alreadyLeavingRoom = false;   // reset after UI settles
+  }, 500);
   }
 
-  // ---------------------------
-  // 🔥 FIX: allow creating rooms again
-  // ---------------------------
+  // Reset creation lock
   creatingRoom = false;
   if (btnCreateRoom) btnCreateRoom.disabled = false;
 
@@ -684,7 +677,7 @@ async function startRoomListeners() {
   const roomSnap = await fbGetDoc(roomRef);
   if (!roomSnap.exists()) return;
   const roomData = roomSnap.data();
-  const hostId = roomData.hostId;
+  globalHostId = roomData.hostId;
 
 
   if (!roomId) return;
@@ -711,15 +704,29 @@ async function startRoomListeners() {
     // -------------------------------------------------
     // ⭐ HOST DISCONNECTED AUTO-CLOSE LOGIC
     // -------------------------------------------------
-    const hostStillHere = multiplayerPlayers.some(p => p.id === hostId);
+    const hostStillHere = multiplayerPlayers.some(p => p.id === globalHostId);
 
-    // ⚠ The host is NOT here anymore and THIS user is a guest
+    // ⭐ Debounced REAL HOST DISCONNECT detection
     if (!isHost && !hostStillHere) {
-        console.warn("Host disconnected — closing room.");
-        await safeUpdateRoom(roomId, { deleted: true });
-        alert("The host has disconnected. The room has been closed.");
-        leaveRoom();
-        return;
+        if (!hostMissingSince) hostMissingSince = Date.now();
+        
+        const missingFor = Date.now() - hostMissingSince;
+
+        // Only treat as REAL disconnect if missing > delay
+        if (missingFor > HOST_DISCONNECT_DELAY) {
+            console.warn("Host disconnected — closing room.");
+
+            await safeUpdateRoom(roomId, { deleted: true });
+
+            if (!alreadyLeavingRoom) {
+                alert("The host has disconnected. The room has been closed.");
+                leaveRoom();
+            }
+            return;
+        }
+    } else {
+        // Host is present again → reset the timer
+        hostMissingSince = null;
     }
 
     // ⚠ If YOU are the host but your Firestore doc vanished (rare)
@@ -775,11 +782,15 @@ async function startRoomListeners() {
 
     // Room closed by host
     if (data.deleted === true) {
-      if (!isHost) {
-        alert("The host ended the game. The room has been closed.");
-      }
-      leaveRoom();
-      return;
+
+        if (!alreadyLeavingRoom) {
+            if (!isHost) {
+                alert("The host ended the game. The room has been closed.");
+            }
+            leaveRoom();
+        }
+
+        return; // do NOT process anything else
     }
 
     // Update lobby room code display
@@ -826,10 +837,52 @@ function fullyInvalidateMap() {
 
 
 function renderLobbyPlayers() {
-  if (!mpPlayerListEl || !mpPlayerCountEl) return;
-  mpPlayerListEl.innerHTML = multiplayerPlayers
-    .map(p => `<li>${p.name} ${p.id === (isHost ? playerId : null) ? "(host)" : ""}</li>`)
+
+
+  const maxPlayers = 10;
+  const count = multiplayerPlayers.length;
+  const prog = (count / maxPlayers) * 100;
+
+  document.getElementById("mp-lobby-progress-bar").style.width = `${prog}%`;
+  document.getElementById("mp-lobby-status").textContent =
+    `Waiting for players… ${count}/${maxPlayers}`;
+
+  if (!mpPlayerListEl) return;
+
+  const oldIds = new Set(
+    [...mpPlayerListEl.querySelectorAll("li")].map(li => li.dataset.id)
+  );
+
+  const newHtml = multiplayerPlayers
+    .map(p => `
+      <li class="mp-player-item" data-id="${p.id}">
+        ${avatarBubble(p.name, p.color)}
+        <span>${p.name}${p.id === globalHostId ? " ⭐" : ""}</span>
+      </li>
+    `)
     .join("");
+
+  mpPlayerListEl.innerHTML = newHtml;
+
+  // identify animations
+  multiplayerPlayers.forEach(p => {
+    const li = mpPlayerListEl.querySelector(`[data-id="${p.id}"]`);
+    if (!oldIds.has(p.id)) {
+      li.classList.add("fade-in");
+      setTimeout(() => li.classList.remove("fade-in"), 300);
+    }
+  });
+
+  oldIds.forEach(id => {
+    if (!multiplayerPlayers.some(p => p.id === id)) {
+      const li = mpPlayerListEl.querySelector(`[data-id="${id}"]`);
+      if (li) {
+        li.classList.add("fade-out");
+        setTimeout(() => li.remove(), 250);
+      }
+    }
+  });
+
   mpPlayerCountEl.textContent = multiplayerPlayers.length.toString();
 }
 
@@ -1589,6 +1642,9 @@ async function handleTimeout() {
 // --- UI Switch ---
 function setScreen(s) {
 
+  s.classList.add("screen-fade");
+  setTimeout(() => s.classList.remove("screen-fade"), 500);
+
   // 🔥 NEW: Always force scroll to top when switching screens
   window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   setTimeout(() => window.scrollTo(0, 0), 30);
@@ -2283,6 +2339,16 @@ async function cancelCleanupIfNeeded(roomId) {
   const ref = fbDoc(db, "rooms", roomId);
   await safeUpdateRoom(roomId, { emptySince: null });
 }
+
+function avatarBubble(name, color) {
+  const letter = name?.trim()?.[0]?.toUpperCase() || "?";
+  return `
+    <div class="avatar-bubble" style="background:${color}">
+      ${letter}
+    </div>
+  `;
+}
+
 
 // --- Utilities ---
 function scoreFromDistance(m) {
