@@ -285,6 +285,8 @@ function renderRoomBrowser(rooms) {
     const li = document.createElement("li");
     li.classList.add("mp-room-item");
 
+    const count = typeof room.playerCount === "number" ? room.playerCount : 0;
+
     li.innerHTML = `
       <div class="mp-room-entry">
         <div class="mp-room-left">
@@ -292,12 +294,19 @@ function renderRoomBrowser(rooms) {
           <span class="mp-room-name">Room ${room.code}</span>
         </div>
         <div class="mp-room-right">
-          <span class="mp-room-count">${room.playerCount ?? 0}/10 players</span>
+          <span class="mp-room-count">${count}/10 players</span>
         </div>
       </div>
     `;
 
     li.addEventListener("click", () => {
+      const name = getPlayerName();
+      if (!name) {
+        alert("Please enter a name first!");
+        mpNameInput.focus();
+        return;
+      }
+
       joinRoom(room.code);
     });
 
@@ -307,7 +316,7 @@ function renderRoomBrowser(rooms) {
 
 
 btnOpenMp.addEventListener("click", () => {
-  window.mpQrJoinMode = false; // normal mode
+  window.mpQrJoinMode = false;
   setScreen(document.getElementById("screen-mp-menu"));
   startRoomBrowser();
 });
@@ -329,8 +338,12 @@ function generateRoomCode() {
 }
 
 function getPlayerName() {
-  const raw = (mpNameInput?.value || playerNameInput?.value || "").trim();
-  return (raw || "Anonymous").slice(0, 20);
+  const raw =
+    (mpNameInput?.value || playerNameInput?.value || "").trim();
+
+  if (!raw) return null;  // 🚫 No name → not allowed
+
+  return raw.slice(0, 20);
 }
 
 
@@ -390,6 +403,9 @@ async function createRoom() {
     });
 
 
+    await fbUpdateDoc(roomRef, { playerCount: 1 });
+
+
     roomId = roomRef.id;
 
     await fbSetDoc(
@@ -433,27 +449,31 @@ async function createRoom() {
 
 async function joinRoom(code) {
   hideRoomQR();
+
   const name = getPlayerName();
   if (!name) return alert("Please enter a name first!");
 
-  // Find room by code
-  const q = fbQuery(fbCollection(db, "rooms"));
+  // ⭐ Correct Firestore query: filter by code
+  const roomsRef = fbCollection(db, "rooms");
+  const q = fbQuery(roomsRef, fbWhere("code", "==", code));
+
   const snap = await fbGetDocs(q);
 
-  let foundRoom = null;
-  snap.forEach(doc => {
-    if (doc.data().code == code) foundRoom = { id: doc.id, ...doc.data() };
-  });
+  if (snap.empty) {
+    return alert("Room not found!");
+  }
 
-  if (!foundRoom) return alert("Room not found!");
+  // There should be exactly one room with that code
+  const doc = snap.docs[0];
+  const foundRoom = { id: doc.id, ...doc.data() };
 
-  // ⭐ SET PROPER ROOM STATE
+  // ⭐ Correct state
   roomId = foundRoom.id;
   roomCode = foundRoom.code;
   isMultiplayer = true;
   isHost = false;
 
-  // ⭐ Correct path now writes to the proper room
+  // Add/merge this player
   await fbSetDoc(
     fbDoc(db, "rooms", roomId, "players", playerId),
     {
@@ -468,8 +488,9 @@ async function joinRoom(code) {
     { merge: true }
   );
 
+  // Update count
   const playersSnap = await fbGetDocs(
-  fbCollection(db, "rooms", roomId, "players")
+    fbCollection(db, "rooms", roomId, "players")
   );
   await fbUpdateDoc(fbDoc(db, "rooms", roomId), {
     playerCount: playersSnap.docs.length
@@ -477,16 +498,14 @@ async function joinRoom(code) {
 
   cancelCleanupIfNeeded(roomId);
 
-  // ⭐ SWITCH TO LOBBY
+  // Switch UI
   setScreen(document.getElementById("screen-mp-lobby"));
 
   showRoomQR(roomCode);
-
   mpPlayerListEl.innerHTML = `<li><strong>Joining room…</strong></li>`;
 
   startRoomListeners();
 }
-
 
 
 async function leaveRoom() {
@@ -609,10 +628,12 @@ async function mpJoinRoomById(roomIdValue, codeValue) {
 
 
   const playersSnap = await fbGetDocs(
-  fbCollection(db, "rooms", roomId, "players")
+      fbCollection(db, "rooms", roomId, "players")
   );
+  const newCount = playersSnap.docs.length;
+
   await fbUpdateDoc(fbDoc(db, "rooms", roomId), {
-    playerCount: playersSnap.docs.length
+      playerCount: newCount
   });
 
   cancelCleanupIfNeeded(roomId);
@@ -659,123 +680,109 @@ async function safeUpdateRoom(roomId, payload) {
 
 async function startRoomListeners() {
 
-    // 🔥 Correct real playerCount everywhere (Open Rooms + Lobby)
-    const realCount = multiplayerPlayers.length;
-    const roomRef = fbDoc(db, "rooms", roomId);
-    const roomSnap = await fbGetDoc(roomRef);
-
-    if (!roomSnap.exists()) {
-      console.warn("Room disappeared before update — skipping.");
-      return;
-    }
-
-    await safeUpdateRoom(roomId, { playerCount: realCount });
+  if (!roomId) return;
 
   // Stop old listeners
   if (roomUnsub) roomUnsub();
   if (playersUnsub) playersUnsub();
 
-  // --- PLAYERS LISTENER ---
+  const roomRef = fbDoc(db, "rooms", roomId);
   const playersRef = fbCollection(db, "rooms", roomId, "players");
 
-  playersUnsub = fbOnSnapshot(playersRef, snap => {
-    // Load players normally
+  // --- PLAYERS SNAPSHOT LISTENER ---
+  playersUnsub = fbOnSnapshot(playersRef, async snap => {
+
     multiplayerPlayers = snap.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     }));
 
-
-    // 🌪️ AUTO-DELETE ROOM WHEN EMPTY
-    if (isMultiplayer && multiplayerPlayers.length === 0) {
-        console.warn("Room has no players — deleting immediately.");
-
-        const roomRef = fbDoc(db, "rooms", roomId);
-
-        // Delete all players subdocs
-        const playersRef = fbCollection(db, "rooms", roomId, "players");
-        fbGetDocs(playersRef).then(snapPlayers => {
-            snapPlayers.forEach(p => deleteDoc(p.ref).catch(() => {}));
-        });
-
-        // Delete guesses
-        const guessesRef = fbCollection(db, "rooms", roomId, "guesses");
-        fbGetDocs(guessesRef).then(snapGuesses => {
-            snapGuesses.forEach(g => deleteDoc(g.ref).catch(() => {}));
-        });
-
-        // Delete the room itself
-        deleteDoc(roomRef).catch(() => {});
-        
-        // Local cleanup
-        leaveRoom();
-        return;
-    }
-
-    // 🔥 Remove ghost/empty players (fix undefined name + wrong count)
+    // Remove ghost players
     multiplayerPlayers = multiplayerPlayers.filter(p => p.name);
+
+    const realCount = multiplayerPlayers.length;
+
+    // 🔥 Update Firestore playerCount (fixes Open Rooms list refresh)
+    await safeUpdateRoom(roomId, { playerCount: realCount });
+
+
+    // --- AUTO DELETE ROOM IF EMPTY ---
+    if (realCount === 0) {
+      console.warn("Room empty → deleting", roomId);
+
+      // delete players
+      const snapPlayers = await fbGetDocs(playersRef);
+      snapPlayers.forEach(p => deleteDoc(p.ref).catch(() => {}));
+
+      // delete guesses
+      const guessesRef = fbCollection(db, "rooms", roomId, "guesses");
+      const snapGuesses = await fbGetDocs(guessesRef);
+      snapGuesses.forEach(g => deleteDoc(g.ref).catch(() => {}));
+
+      // delete the room
+      await deleteDoc(roomRef).catch(() => {});
+
+      leaveRoom();
+      return;
+    }
 
     // Update lobby UI
     renderLobbyPlayers();
 
-    // Host progression logic ONLY when playing
+    // Host progression logic
     if (isHost) {
-      fbGetDoc(fbDoc(db, "rooms", roomId)).then(roomSnap => {
-        if (!roomSnap.exists()) return;
-        const room = roomSnap.data();
-        if (room.stage !== "playing") return;
-        maybeHostAdvanceFromPlaying(room);
-      });
+      const rs = await fbGetDoc(roomRef);
+      if (rs.exists()) {
+        const room = rs.data();
+        if (room.stage === "playing") {
+          maybeHostAdvanceFromPlaying(room);
+        }
+      }
     }
   });
 
+
   // --- ROOM SNAPSHOT LISTENER ---
   roomUnsub = fbOnSnapshot(roomRef, snap => {
+
     if (!snap.exists()) return;
+
     const data = snap.data();
 
-    // 🆕 ROOM DELETED CHECK
+    // Room closed by host
     if (data.deleted === true) {
-      console.warn("Room was closed. Kicking player.");
+      if (!isHost) {
+        alert("The host ended the game. The room has been closed.");
+      }
       leaveRoom();
-      alert("The host ended the game.");
       return;
     }
 
-    roomCode = data.code;
-    document.getElementById("mp-room-code").textContent = roomCode;
+    // Update lobby room code display
+    const codeField = document.getElementById("mp-room-code");
+    if (codeField) codeField.textContent = data.code;
 
-    // Host vs joiner controls
-    if (isHost) {
-      document.getElementById("btn-mp-start").style.display = "block";
-      document.getElementById("mp-wait-host").style.display = "none";
-    } else {
-      document.getElementById("btn-mp-start").style.display = "none";
-      document.getElementById("mp-wait-host").style.display = "block";
-    }
+    // Host/joiner UI
+    document.getElementById("btn-mp-start").style.display =
+      isHost ? "block" : "none";
+    document.getElementById("mp-wait-host").style.display =
+      isHost ? "none" : "block";
 
-
-    // --- GAME FLOW SWITCH ---
+    // Stage switch logic
     switch (data.stage) {
       case "waiting":
-        // Stay in lobby, no auto-start
         break;
 
       case "playing":
-
-          console.log("▶ Entering playing stage");
-          hideLobbyUI();
-          handleRoomPlaying(data);
-          break;
-
+        hideLobbyUI();
+        handleRoomPlaying(data);
+        break;
 
       case "showing_results":
-        console.log("📊 Showing round results");
         handleRoomResults(data);
         break;
 
       case "finished":
-        console.log("🏁 Game finished");
         handleRoomFinished(data);
         break;
     }
@@ -804,7 +811,10 @@ function renderLobbyPlayers() {
 
 
 if (btnCreateRoom) btnCreateRoom.addEventListener("click", createRoom);
-if (btnJoinRoom) btnJoinRoom.addEventListener("click", joinRoom);
+if (btnJoinRoom) btnJoinRoom.addEventListener("click", () => {
+  const code = mpJoinCodeInput.value.trim();
+  joinRoom(code);
+});
 if (btnMpStart) btnMpStart.addEventListener("click", () => {
   enterGameMode();
   hostStartMultiplayerGame();
