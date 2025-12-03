@@ -20,6 +20,7 @@ let isHost = false;
 let roomId = null;
 let roomCode = null;
 let playerId = "p_" + Math.random().toString(36).slice(2, 9);
+let creatingRoom = false;
 
 let roomUnsub = null;
 let playersUnsub = null;
@@ -126,6 +127,7 @@ const fbDoc = window.fbDoc;
 const fbIncrement = window.fbIncrement;
 const fbGetDoc = window.fbGetDoc;
 const fbSetDoc = window.fbSetDoc;
+const deleteDoc = window.deleteDoc;
 
 // Leaflet
 let mapInitialized = false;
@@ -167,6 +169,43 @@ async function ensureQuestionsLoaded() {
   }
 }
 
+// 🧹 Automatically delete a room once it's empty for 15 minutes
+
+async function scheduleRoomCleanup(roomId) {
+  const ref = fbDoc(db, "rooms", roomId);
+
+  // Mark emptySince on the room — only if not yet marked
+  try {
+    await safeUpdateRoom(roomId, { emptySince: Date.now() });
+  } catch (e) {
+    console.warn("Could not mark emptySince", e);
+  }
+
+  // After 15 minutes → check again
+  setTimeout(async () => {
+    const snap = await fbGetDoc(ref);
+    if (!snap.exists()) return;
+
+    const data = snap.data();
+    const players = data.players || {};
+
+    // If host already set deleted: remove immediately
+    if (data.deleted === true) {
+      console.log(`🔥 Removing deleted room ${roomId}`);
+      await deleteDoc(ref).catch(() => {});
+      return;
+    }
+
+    if (
+      Object.keys(players).length === 0 &&
+      data.emptySince &&
+      Date.now() - data.emptySince >= 15 * 60 * 1000
+    ) {
+      console.log(`🧹 Auto-removing empty room ${roomId}`);
+      await deleteDoc(ref).catch(() => {});
+    }
+  }, 15 * 60 * 1000);
+}
 
 
 // --- Multiplayer DOM ---
@@ -226,7 +265,11 @@ function startRoomBrowser() {
   if (roomsUnsub) roomsUnsub();
 
   const roomsRef = fbCollection(db, "rooms");
-  const qRooms = fbQuery(roomsRef, fbWhere("stage", "==", "waiting"));
+  const qRooms = fbQuery(
+  roomsRef,
+  fbWhere("stage", "==", "waiting"),
+  fbWhere("deleted", "==", false)
+  );
 
   roomsUnsub = fbOnSnapshot(qRooms, snap => {
     const rooms = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -235,31 +278,32 @@ function startRoomBrowser() {
 }
 
 function renderRoomBrowser(rooms) {
-  if (!mpRoomListEl) return;
+  const list = document.getElementById("mp-room-list");
+  list.innerHTML = "";
 
-  if (rooms.length === 0) {
-    mpRoomListEl.innerHTML = `
-      <li style="opacity:0.6;">No open rooms yet…</li>
+  rooms.forEach(room => {
+    const li = document.createElement("li");
+    li.classList.add("mp-room-item");
+
+    li.innerHTML = `
+      <div class="mp-room-entry">
+        <div class="mp-room-left">
+          <span class="diamond-icon"></span>
+          <span class="mp-room-name">Room ${room.code}</span>
+        </div>
+        <div class="mp-room-right">
+          <span class="mp-room-count">${room.playerCount ?? 0}/10 players</span>
+        </div>
+      </div>
     `;
-    return;
-  }
 
-  mpRoomListEl.innerHTML = rooms.map(r => `
-    <li data-id="${r.id}" data-code="${r.code}">
-      <span>🔹 Room <strong>${r.code}</strong></span>
-      <span>${r.minPlayers || 0}/${r.maxPlayers || 10} players</span>
-    </li>
-  `).join("");
-
-  // Click handler
-  mpRoomListEl.querySelectorAll("li").forEach(li => {
     li.addEventListener("click", () => {
-      mpJoinRoomById(li.dataset.id, li.dataset.code);
+      joinRoom(room.code);
     });
+
+    list.appendChild(li);
   });
 }
-
-
 
 
 btnOpenMp.addEventListener("click", () => {
@@ -319,63 +363,80 @@ function showRoomQR(code) {
 
 
 async function createRoom() {
-  const name = getPlayerName();
-  if (!name) return alert("Please enter a name first!");
+  if (creatingRoom) return; // ⛔ Prevent double-click
+  creatingRoom = true;
 
-  // 🧹 Reset QR
-  hideRoomQR();
+  const btn = btnCreateRoom;
+  if (btn) btn.disabled = true;
 
-  isMultiplayer = true;
-  isHost = true;
+  try {
+    const name = getPlayerName();
+    if (!name) throw new Error("Please enter a name first!");
 
-  const generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
+    hideRoomQR();
 
-  const roomRef = await fbAddDoc(fbCollection(db, "rooms"), {
-    createdAt: Date.now(),
-    stage: "waiting",
-    hostId: playerId,
-    code: generatedCode
-  });
+    isMultiplayer = true;
+    isHost = true;
 
-  roomId = roomRef.id;
+    const generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
 
-  await fbSetDoc(fbDoc(db, "rooms", roomId, "players", playerId), {
-    name,
-    color: "#" + Math.floor(Math.random()*16777215).toString(16).padStart(6,"0"),
-    score: 0,
-    totalDistance: 0,
-    ready: true,
-    joinedAt: Date.now(),
-    lastRoundFinished: -1
-  });
+    const roomRef = await fbAddDoc(fbCollection(db, "rooms"), {
+      createdAt: Date.now(),
+      stage: "waiting",
+      hostId: playerId,
+      code: generatedCode,
+      deleted: false,
+      playerCount: 1
+    });
 
-  // Switch to lobby screen
-  setScreen(document.getElementById("screen-mp-lobby"));
 
-  // UPDATE ROOM CODE TEXT
-  document.getElementById("mp-room-code").textContent = generatedCode;
+    roomId = roomRef.id;
 
-  // 🟩🟩🟩 SHOW THE QR CODE HERE
-  showRoomQR(generatedCode);
+    await fbSetDoc(
+      fbDoc(db, "rooms", roomId, "players", playerId),
+      {
+        name,
+        color: "#" + Math.floor(Math.random()*16777215).toString(16).padStart(6,"0"),
+        score: 0,
+        totalDistance: 0,
+        ready: true,
+        joinedAt: Date.now(),
+        lastRoundFinished: -1
+      }
+    );
 
-  // Continue as before
-  document.getElementById("mp-player-list").innerHTML = `
-    <li><strong>Loading room…</strong></li>
-  `;
+    cancelCleanupIfNeeded(roomId);
 
-  startRoomListeners();
+    setScreen(document.getElementById("screen-mp-lobby"));
+    mpRoomCodeEl.textContent = generatedCode;
+    showRoomQR(generatedCode);
+
+    mpPlayerListEl.innerHTML = `<li><strong>Loading room…</strong></li>`;
+
+    startRoomListeners();
+  }
+
+  catch (err) {
+    console.error("Room creation failed:", err);
+    alert(err.message || "Failed to create room.");
+
+    // allow retry ONLY on failure
+    creatingRoom = false;
+    if (btn) btn.disabled = false;
+    return;
+  }
+
+  // 🚫 Do NOT reset creatingRoom on success — prevents duplicates forever
 }
 
 
-async function joinRoom() {
+
+async function joinRoom(code) {
   hideRoomQR();
   const name = getPlayerName();
   if (!name) return alert("Please enter a name first!");
 
-  const code = document.getElementById("mp-join-code").value.trim();
-  if (code.length < 4) return alert("Invalid room code.");
-
-  // Find the room with this code
+  // Find room by code
   const q = fbQuery(fbCollection(db, "rooms"));
   const snap = await fbGetDocs(q);
 
@@ -384,47 +445,138 @@ async function joinRoom() {
     if (doc.data().code == code) foundRoom = { id: doc.id, ...doc.data() };
   });
 
-  if (!foundRoom) {
-    return alert("Room not found!");
-  }
+  if (!foundRoom) return alert("Room not found!");
 
+  // ⭐ SET PROPER ROOM STATE
+  roomId = foundRoom.id;
+  roomCode = foundRoom.code;
   isMultiplayer = true;
   isHost = false;
-  roomId = foundRoom.id;
 
-  // Join room player list
-  await fbSetDoc(fbDoc(db, "rooms", roomId, "players", playerId), {
-    name,
-    color: "#" + Math.floor(Math.random() * 16777215).toString(16).padStart(6, "0"),
-    score: 0,
-    totalDistance: 0,
-    ready: true,
-    joinedAt: Date.now(),
-    lastRoundFinished: -1
+  // ⭐ Correct path now writes to the proper room
+  await fbSetDoc(
+    fbDoc(db, "rooms", roomId, "players", playerId),
+    {
+      name,
+      color: "#" + Math.floor(Math.random()*16777215).toString(16).padStart(6,"0"),
+      score: 0,
+      totalDistance: 0,
+      ready: true,
+      joinedAt: Date.now(),
+      lastRoundFinished: -1
+    },
+    { merge: true }
+  );
+
+  const playersSnap = await fbGetDocs(
+  fbCollection(db, "rooms", roomId, "players")
+  );
+  await fbUpdateDoc(fbDoc(db, "rooms", roomId), {
+    playerCount: playersSnap.docs.length
   });
 
-  // Switch UI to lobby
+  cancelCleanupIfNeeded(roomId);
+
+  // ⭐ SWITCH TO LOBBY
   setScreen(document.getElementById("screen-mp-lobby"));
 
-  // 🟩 SHOW QR CODE FOR JOINERS TOO
-  showRoomQR(foundRoom.code);
+  showRoomQR(roomCode);
 
-  // Prepare lobby placeholders
-  document.getElementById("mp-room-code").textContent = "------";
-  document.getElementById("mp-player-list").innerHTML = `
-    <li><strong>Joining room…</strong></li>
-  `;
+  mpPlayerListEl.innerHTML = `<li><strong>Joining room…</strong></li>`;
 
-  // Start listening for lobby updates
   startRoomListeners();
 }
 
 
 
+async function leaveRoom() {
+  if (!roomId) return;
+
+  const thisRoomId = roomId;
+  const wasHost = isHost;
+
+  // Stop listeners
+  if (roomUnsub) roomUnsub();
+  if (playersUnsub) playersUnsub();
+  if (guessesUnsub) guessesUnsub();
+
+  // Remove player from Firestore
+  if (wasHost) {
+
+      // Delete ALL players including the host
+      const playersSnap = await fbGetDocs(
+          fbCollection(db, "rooms", thisRoomId, "players")
+      );
+
+      for (const d of playersSnap.docs) {
+          await deleteDoc(d.ref).catch(() => {});
+      }
+
+      // Delete guesses subcollection
+      const guessesSnap = await fbGetDocs(
+          fbCollection(db, "rooms", thisRoomId, "guesses")
+      );
+
+      for (const g of guessesSnap.docs) {
+          await deleteDoc(g.ref).catch(() => {});
+      }
+
+      // Delete the room
+      await deleteDoc(fbDoc(db, "rooms", thisRoomId)).catch(() => {});
+  } else {
+      try {
+          const playerRef = fbDoc(db, "rooms", thisRoomId, "players", playerId);
+          await deleteDoc(playerRef);
+
+          // Update playerCount after this user leaves
+          const playersSnap = await fbGetDocs(
+              fbCollection(db, "rooms", thisRoomId, "players")
+          );
+          const newCount = playersSnap.docs.length;
+
+          await fbUpdateDoc(fbDoc(db, "rooms", thisRoomId), {
+              playerCount: newCount
+          });
+
+          // Auto-delete room if empty
+          if (newCount === 0) {
+              console.warn("Room empty → deleting room", thisRoomId);
+
+              // delete guesses
+              const guessesSnap = await fbGetDocs(
+                  fbCollection(db, "rooms", thisRoomId, "guesses")
+              );
+              guessesSnap.forEach(g => deleteDoc(g.ref));
+
+              await deleteDoc(fbDoc(db, "rooms", thisRoomId));
+          }
+
+      } catch (err) {
+          console.error("Error removing player from room:", err);
+      }
+  }
+
+  // ---------------------------
+  // 🔥 FIX: allow creating rooms again
+  // ---------------------------
+  creatingRoom = false;
+  if (btnCreateRoom) btnCreateRoom.disabled = false;
+
+  // Reset local multiplayer state
+  isMultiplayer = false;
+  isHost = false;
+  roomId = null;
+  roomCode = null;
+  multiplayerPlayers = [];
+  multiplayerGuesses = [];
+
+  hideRoomQR();
+  setScreen(screenStart);
+}
+
 
 
 async function mpJoinRoomById(roomIdValue, codeValue) {
-
   hideRoomQR();
   const name = getPlayerName();
 
@@ -455,12 +607,26 @@ async function mpJoinRoomById(roomIdValue, codeValue) {
     { merge: true }
   );
 
+
+  const playersSnap = await fbGetDocs(
+  fbCollection(db, "rooms", roomId, "players")
+  );
+  await fbUpdateDoc(fbDoc(db, "rooms", roomId), {
+    playerCount: playersSnap.docs.length
+  });
+
+  cancelCleanupIfNeeded(roomId);
+
+  // ⭐⭐⭐ THIS IS THE FIX ⭐⭐⭐
+  setScreen(document.getElementById("screen-mp-lobby"));
+
   startRoomListeners();
   showLobbyInfo();
 
-  // 🟩 SHOW QR CODE FOR JOINERS (room browser)
+  // Show QR for joiners
   showRoomQR(codeValue);
 }
+
 
 
 
@@ -479,7 +645,32 @@ function showLobbyInfo() {
   mpRoomCodeEl.textContent = roomCode || "";
 }
 
-function startRoomListeners() {
+async function safeUpdateRoom(roomId, payload) {
+  const roomRef = fbDoc(db, "rooms", roomId);
+  const snap = await fbGetDoc(roomRef);
+  if (!snap.exists()) {
+    console.warn("⚠️ Tried to update a room that no longer exists:", roomId);
+    return;
+  }
+  return fbUpdateDoc(roomRef, payload).catch(err => {
+    console.warn("⚠️ Update failed:", err);
+  });
+}
+
+async function startRoomListeners() {
+
+    // 🔥 Correct real playerCount everywhere (Open Rooms + Lobby)
+    const realCount = multiplayerPlayers.length;
+    const roomRef = fbDoc(db, "rooms", roomId);
+    const roomSnap = await fbGetDoc(roomRef);
+
+    if (!roomSnap.exists()) {
+      console.warn("Room disappeared before update — skipping.");
+      return;
+    }
+
+    await safeUpdateRoom(roomId, { playerCount: realCount });
+
   // Stop old listeners
   if (roomUnsub) roomUnsub();
   if (playersUnsub) playersUnsub();
@@ -487,26 +678,52 @@ function startRoomListeners() {
   // --- PLAYERS LISTENER ---
   const playersRef = fbCollection(db, "rooms", roomId, "players");
 
-  const roomRef = fbDoc(db, "rooms", roomId);
-
   playersUnsub = fbOnSnapshot(playersRef, snap => {
+    // Load players normally
     multiplayerPlayers = snap.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
     }));
 
+
+    // 🌪️ AUTO-DELETE ROOM WHEN EMPTY
+    if (isMultiplayer && multiplayerPlayers.length === 0) {
+        console.warn("Room has no players — deleting immediately.");
+
+        const roomRef = fbDoc(db, "rooms", roomId);
+
+        // Delete all players subdocs
+        const playersRef = fbCollection(db, "rooms", roomId, "players");
+        fbGetDocs(playersRef).then(snapPlayers => {
+            snapPlayers.forEach(p => deleteDoc(p.ref).catch(() => {}));
+        });
+
+        // Delete guesses
+        const guessesRef = fbCollection(db, "rooms", roomId, "guesses");
+        fbGetDocs(guessesRef).then(snapGuesses => {
+            snapGuesses.forEach(g => deleteDoc(g.ref).catch(() => {}));
+        });
+
+        // Delete the room itself
+        deleteDoc(roomRef).catch(() => {});
+        
+        // Local cleanup
+        leaveRoom();
+        return;
+    }
+
+    // 🔥 Remove ghost/empty players (fix undefined name + wrong count)
+    multiplayerPlayers = multiplayerPlayers.filter(p => p.name);
+
     // Update lobby UI
     renderLobbyPlayers();
 
-    // Host progression check ONLY if game is running
+    // Host progression logic ONLY when playing
     if (isHost) {
-      fbGetDoc(roomRef).then(roomSnap => {
+      fbGetDoc(fbDoc(db, "rooms", roomId)).then(roomSnap => {
         if (!roomSnap.exists()) return;
         const room = roomSnap.data();
-
-        // 🚫 Do NOT auto-advance when showing results
         if (room.stage !== "playing") return;
-
         maybeHostAdvanceFromPlaying(room);
       });
     }
@@ -516,6 +733,14 @@ function startRoomListeners() {
   roomUnsub = fbOnSnapshot(roomRef, snap => {
     if (!snap.exists()) return;
     const data = snap.data();
+
+    // 🆕 ROOM DELETED CHECK
+    if (data.deleted === true) {
+      console.warn("Room was closed. Kicking player.");
+      leaveRoom();
+      alert("The host ended the game.");
+      return;
+    }
 
     roomCode = data.code;
     document.getElementById("mp-room-code").textContent = roomCode;
@@ -528,6 +753,7 @@ function startRoomListeners() {
       document.getElementById("btn-mp-start").style.display = "none";
       document.getElementById("mp-wait-host").style.display = "block";
     }
+
 
     // --- GAME FLOW SWITCH ---
     switch (data.stage) {
@@ -600,11 +826,11 @@ async function hostStartMultiplayerGame() {
   const roomRef = fbDoc(db, "rooms", roomId);
   const now = Date.now();
 
-  await fbUpdateDoc(roomRef, {
+  await safeUpdateRoom(roomId, {
     stage: "playing",
     currentIndex: 0,
-    questions: questionIndices,   // <<< 🔥 IMPORTANT
-    totalRounds: TOTAL_QUESTIONS, // <<< 🔥 IMPORTANT
+    questions: questionIndices,
+    totalRounds: TOTAL_QUESTIONS,
     roundStartedAt: now,
     roundEndsAt: now + ROUND_TIME * 1000
   });
@@ -778,7 +1004,7 @@ async function maybeHostAdvanceFromPlaying(room) {
 
   // Advance!
   const roomRef = fbDoc(db, "rooms", roomId);
-  await fbUpdateDoc(roomRef, {
+  await safeUpdateRoom(roomId, {
     stage: "showing_results",
     resultsUntil: now + 5000
   });
@@ -848,11 +1074,11 @@ async function handleRoomResults(room) {
 
       if (nextRound >= room.totalRounds) {
         // Game finished
-        await fbUpdateDoc(roomRef, { stage: "finished" });
+        await safeUpdateRoom(roomId, { stage: "finished" });
       } else {
         // Advance to next round
         const now = Date.now();
-        await fbUpdateDoc(roomRef, {
+        await safeUpdateRoom(roomId, {
           stage: "playing",
           currentIndex: nextRound,
           roundStartedAt: now,
@@ -2018,6 +2244,12 @@ async function finish() {
   }, 400);
 }
 
+
+async function cancelCleanupIfNeeded(roomId) {
+  const ref = fbDoc(db, "rooms", roomId);
+  await safeUpdateRoom(roomId, { emptySince: null });
+}
+
 // --- Utilities ---
 function scoreFromDistance(m) {
   if (m <= 100) return 100;
@@ -2127,7 +2359,9 @@ function renderMpRoundStandings(roundIndex) {
 }
 
 
-// --- Events ---
+// --- Events --
+
+
 btnConfirmGuess.addEventListener("click", confirmGuess);
 btnClearGuess.addEventListener("click", () => {
   if (!guessLocked && guessMarker) {
@@ -2165,6 +2399,9 @@ btnRestart.addEventListener("click", () => {
   exitGameMode();
   setScreen(screenStart);
 });
+
+// Leave Room button
+document.getElementById("btn-mp-leave").addEventListener("click", leaveRoom);
 
 // --- Save Score ---
 btnSaveScore.addEventListener("click", async () => {

@@ -621,7 +621,7 @@ body.light .guess-popup .popup-body {
   box-shadow: inset 0 0 6px rgba(0,0,0,0.05);
 }
 
-/* đźŽ® MULTIPLAYER UI STYLES */
+/* MULTIPLAYER UI STYLES */
 
 /* Room list */
 #mp-room-list {
@@ -650,6 +650,39 @@ body.light .guess-popup .popup-body {
 #screen-mp-round {
   margin-top: 0 !important;
   padding-top: 0 !important;
+}
+
+
+.mp-room-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.mp-room-left {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.diamond-icon {
+  width: 14px;
+  height: 14px;
+  background: #6ca8ff;
+  transform: rotate(45deg);
+  border-radius: 3px;
+  margin-left: 0.2rem;
+}
+
+.mp-room-name {
+  font-weight: 600;
+}
+
+.mp-room-right {
+  margin-left: auto;
+  font-size: 1rem;
+  opacity: 0.85;
 }
 
 

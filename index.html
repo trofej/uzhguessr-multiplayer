@@ -242,7 +242,7 @@
     </table>
   </div>
 
-  <button id="btn-restart" class="btn primary">Play Again</button>
+  <button id="btn-restart" class="btn primary">Leave Game</button>
 </section>
 
 </main>
@@ -258,7 +258,7 @@
   import {
     getFirestore, collection, addDoc, getDocs, query, orderBy,
     doc, updateDoc, increment, getDoc, setDoc,
-    onSnapshot, where
+    onSnapshot, deleteDoc, where
   } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -286,6 +286,8 @@
   window.fbSetDoc = setDoc;
   window.fbOnSnapshot = onSnapshot;
   window.fbWhere = where;
+  window.deleteDoc = deleteDoc;
+  
 </script>
 
 <!-- MAIN SCRIPT -->
